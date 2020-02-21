@@ -539,3 +539,6 @@ iframe#st {
   width: 100%;
   border: none;
   height: 5500px; }
+
+.rss-subscribe {
+  display: none; }
