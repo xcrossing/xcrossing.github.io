@@ -1,0 +1,1944 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.6">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2020-02-21T12:25:28+00:00</updated><id>/feed.xml</id><entry><title type="html">rails/spring的运作分析</title><link href="/2019/07/01/64ea7d8a2c7fc2cabdb0d69a990f8905.html" rel="alternate" type="text/html" title="rails/spring的运作分析" /><published>2019-07-01T00:00:00+00:00</published><updated>2019-07-01T00:00:00+00:00</updated><id>/2019/07/01/64ea7d8a2c7fc2cabdb0d69a990f8905</id><content type="html" xml:base="/2019/07/01/64ea7d8a2c7fc2cabdb0d69a990f8905.html">&lt;div&gt;rails新建项目时，已经进行过binstub。这时输入rails c，即调用了spring，会打印出“Running via Spring preloader in process”的字样。可凭这些日志信息，到源码中查找它的调用过程。发现日志由以下方法输出，于是加入pp caller，打印出它是怎样被调用的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/application.rb
+def serve(client)
+  # ...
+
+  pid = fork {
+    pp caller
+    STDERR.puts &amp;#34;Running via Spring preloader in process #{Process.pid}&amp;#34; unless Spring.quiet
+
+
+    # ...
+  }
+
+  disconnect_database
+
+  log &amp;#34;forked #{pid}&amp;#34;
+  manager.puts pid
+
+  wait pid, streams, client
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;再次输入spring stop; rails c，得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;➜  rays git:(master) ✗ rails c
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/pry-rails-0.3.6/lib/pry-rails/prompt.rb:36: warning: constant Pry::Prompt::MAP is deprecated
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/railties-5.2.1/lib/rails/railtie.rb:127:in `config&amp;#39;&amp;#34;,
+&amp;#34;/home/z/test_ruby/rays/config/application.rb:12:in `&lt;class:application&gt;&amp;#39;&amp;#34;,
+&amp;#34;/home/z/test_ruby/rays/config/application.rb:10:in `&lt;module:rays&gt;&amp;#39;&amp;#34;,
+&amp;#34;/home/z/test_ruby/rays/config/application.rb:9:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:92:in `require&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:92:in `preload&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:153:in `serve&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:141:in `block in run&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:135:in `loop&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application.rb:135:in `run&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application/boot.rb:19:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:59:in `require&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:59:in `require&amp;#39;&amp;#34;,
+&amp;#34;-e:1:in `&amp;lt;/top&amp;gt;&amp;lt;/top&amp;gt;&lt;/module:rays&gt;&lt;/class:application&gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;]
+Running via Spring preloader in process 4152
+Loading development environment (Rails 5.2.1)
+[1] pry(main)&amp;gt;&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;其调用可追溯至以下文件&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/application/boot.rb
+Process.setsid
+
+require &amp;#34;spring/application&amp;#34;
+
+app = Spring::Application.new(
+  UNIXSocket.for_fd(3),
+  Spring::JSON.load(ENV.delete(&amp;#34;SPRING_ORIGINAL_ENV&amp;#34;).dup),
+  Spring::Env.new(log_file: IO.for_fd(4))
+)
+
+Signal.trap(&amp;#34;TERM&amp;#34;) { app.terminate }
+
+Spring::ProcessTitleUpdater.run { |distance|
+  &amp;#34;spring app    | #{app.app_name} | started #{distance} ago | #{app.app_env} mode&amp;#34;
+}
+
+app.eager_preload if ENV.delete(&amp;#34;SPRING_PRELOAD&amp;#34;) == &amp;#34;1&amp;#34;
+app.run&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;然后app.run会等待manager和@interrupt，即上面的UNIXSocket.for_fd(3)，以及IO.pipe的读端，一旦可读，则检查状态，执行exit或serve&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/application.rb
+def run
+  state :running
+  manager.puts
+
+  loop do
+    IO.select [manager, @interrupt.first]
+
+    if terminating? || watcher_stale? || preload_failed?
+      exit
+    else
+      serve manager.recv_io(UNIXSocket)
+    end
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;那么UNIXSocket.for_fd(3)除了loop之前写了一下，平时是如何写入，以作进程间通信的呢？在源码里搜索数字3，得：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/application_manager.rb
+module Spring
+  class ApplicationManager
+
+    def start
+      start_child
+    end
+
+    private
+
+    def start_child(preload = false)
+      @child, child_socket = UNIXSocket.pair
+
+      Bundler.with_clean_env do
+        @pid = Process.spawn(
+          {
+            &amp;#34;RAILS_ENV&amp;#34;           =&amp;gt; app_env,
+            &amp;#34;RACK_ENV&amp;#34;            =&amp;gt; app_env,
+            &amp;#34;SPRING_ORIGINAL_ENV&amp;#34; =&amp;gt; JSON.dump(Spring::ORIGINAL_ENV),
+            &amp;#34;SPRING_PRELOAD&amp;#34;      =&amp;gt; preload ? &amp;#34;1&amp;#34; : &amp;#34;0&amp;#34;
+          },
+          &amp;#34;ruby&amp;#34;,
+          &amp;#34;-I&amp;#34;, File.expand_path(&amp;#34;../..&amp;#34;, $LOADED_FEATURES.grep(/bundler\/setup\.rb$/).first),
+          &amp;#34;-I&amp;#34;, File.expand_path(&amp;#34;../..&amp;#34;, __FILE__),
+          &amp;#34;-e&amp;#34;, &amp;#34;require &amp;#39;spring/application/boot&amp;#39;&amp;#34;,
+          3 =&amp;gt; child_socket,
+          4 =&amp;gt; spring_env.log_file,
+        )
+      end
+
+      start_wait_thread(pid, child) if child.gets
+      child_socket.close
+    end
+
+    # ....
+
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;这里Spring::ApplicationManager在start之后，会启动一个子进程，让子进程的文件描述符3指向自己建立的一对UNIXSocket的其中一端，并且之后在自己这个父进程中关闭该端，只保留从@child发信到子进程manager的功能&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;那么start_child又是从何调用的呢？&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是加入pp caller，再rails c。但无任何输出，考虑到这里这里代码所处的进程可能不是最终rails c所看到的进程，又或是其文件描述符被重定向过，只好将调用栈输出到文件&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/application_manager.rb
+def start_child(preload = false)
+  File.open(&amp;#39;/tmp/spring_manager_start_child&amp;#39;, &amp;#39;w+&amp;#39;) do |f|
+    f.puts caller
+    f.puts &amp;#39;------------&amp;#39;
+  end
+
+  @child, child_socket = UNIXSocket.pair
+  # ...
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;重新spring stop; rails c，在检查日志文件，可见调用栈如下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;➜  ~ cat /tmp/spring_manager_start_child
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:93:in `open&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:93:in `start_child&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:26:in `start&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:52:in `block in with_child&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:20:in `synchronize&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:39:in `with_child&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/application_manager.rb:60:in `run&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:65:in `serve&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:49:in `block in start_server&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:49:in `loop&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:49:in `start_server&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:43:in `boot&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/server.rb:14:in `boot&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/server.rb:10:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/command.rb:7:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client.rb:30:in `run&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/bin/spring:49:in `&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;再看回执行rails c的步骤：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;因文件bin/rails被binstub过，所以会在执行rails命令前，先加载bin/spring&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;#!/usr/bin/env ruby
+begin
+  load File.expand_path(&amp;#39;../spring&amp;#39;, __FILE__)
+rescue LoadError =&amp;gt; e
+  raise unless e.message.include?(&amp;#39;spring&amp;#39;)
+end
+APP_PATH = File.expand_path(&amp;#39;../config/application&amp;#39;, __dir__)
+require_relative &amp;#39;../config/boot&amp;#39;
+require &amp;#39;rails/commands&amp;#39;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而bin/spring会运行spring这个gem的spring/binstub&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;#!/usr/bin/env ruby
+unless defined?(Spring)
+  require &amp;#39;rubygems&amp;#39;
+  require &amp;#39;bundler&amp;#39;
+
+  lockfile = Bundler::LockfileParser.new(Bundler.default_lockfile.read)
+  spring = lockfile.specs.detect { |spec| spec.name == &amp;#34;spring&amp;#34; }
+  if spring
+    Gem.use_paths Gem.dir, Bundler.bundle_path.to_s, *Gem.path
+    gem &amp;#39;spring&amp;#39;, spring.version
+    require &amp;#39;spring/binstub&amp;#39;
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;来到spring/binstub，它会执行spring这个gem的bin/spring文件。而如果是rails命令，还会先将rails压到ARGV的前端&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# lib/spring/binstub.rb
+command  = File.basename($0)
+bin_path = File.expand_path(&amp;#34;../../../bin/spring&amp;#34;, __FILE__)
+
+# ...
+
+if command == &amp;#34;spring&amp;#34;
+  load bin_path
+else
+  disable = ENV[&amp;#34;DISABLE_SPRING&amp;#34;]
+
+  if Process.respond_to?(:fork) &amp;amp;&amp;amp; (disable.nil? || disable.empty? || disable == &amp;#34;0&amp;#34;)
+    ARGV.unshift(command)
+    load bin_path
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而bin/spring是这样的，将ARGV传给Spring::Client.run&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;lib = File.expand_path(&amp;#34;../../lib&amp;#34;, __FILE__)
+$LOAD_PATH.unshift lib unless $LOAD_PATH.include?(lib) # enable local development
+require &amp;#39;spring/client&amp;#39;
+Spring::Client.run(ARGV)&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是便接上了上面ApplicationManager#run -&amp;gt; ApplicationManager#start_child的调用栈。调用栈中涉及的server代码如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/server.rb
+module Spring
+  class Server
+    def self.boot(options = {})
+      new(options).boot
+    end
+
+    attr_reader :env
+
+    def initialize(options = {})
+      @foreground   = options.fetch(:foreground, false)
+      @env          = options[:env] || default_env
+      @applications = Hash.new { |h, k| h[k] = ApplicationManager.new(k, env) }
+      @pidfile      = env.pidfile_path.open(&amp;#39;a&amp;#39;)
+      @mutex        = Mutex.new
+    end
+
+    def boot
+      Spring.verify_environment
+
+      write_pidfile
+      set_pgid unless foreground?
+      ignore_signals unless foreground?
+      set_exit_hook
+      set_process_title
+      start_server
+    end
+
+    def start_server
+      server = UNIXServer.open(env.socket_name)
+      log &amp;#34;started on #{env.socket_name}&amp;#34;
+      loop { serve server.accept }
+    rescue Interrupt
+    end
+
+    def serve(client)
+      log &amp;#34;accepted client&amp;#34;
+      client.puts env.version
+
+      app_client = client.recv_io
+      command    = JSON.load(client.read(client.gets.to_i))
+
+      args, default_rails_env = command.values_at(&amp;#39;args&amp;#39;, &amp;#39;default_rails_env&amp;#39;)
+
+      if Spring.command?(args.first)
+        log &amp;#34;running command #{args.first}&amp;#34;
+        client.puts
+        client.puts @applications[rails_env_for(args, default_rails_env)].run(app_client)
+      else
+        log &amp;#34;command not found #{args.first}&amp;#34;
+        client.close
+      end
+    rescue SocketError =&amp;gt; e
+      raise e unless client.eof?
+    ensure
+      redirect_output
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;这里可以看到，server其实是UNIXServer.open(env.socket_name)，于是搜下socket_name，看还有哪里会用它来建立管道，得：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Spring
+  module Client
+    class Run &amp;lt; Command
+      attr_reader :server
+
+      def connect
+        File.open(&amp;#39;/tmp/spring_client_run_connect&amp;#39;, &amp;#39;w+&amp;#39;) do |f|
+          f.puts caller
+          f.puts &amp;#39;-----------------&amp;#39;
+        end
+        @server = UNIXSocket.open(env.socket_name)
+      end
+
+      def call
+        begin
+          connect
+        rescue Errno::ENOENT, Errno::ECONNRESET, Errno::ECONNREFUSED
+          cold_run
+        else
+          warm_run
+        end
+      ensure
+        server.close if server
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在上面代码加入调用栈打印后，再运行spring stop;rails c，得：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;➜  ~ cat /tmp/spring_client_run_connect
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/run.rb:26:in `open&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/run.rb:26:in `connect&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/run.rb:61:in `cold_run&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/run.rb:37:in `rescue in call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/run.rb:34:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/command.rb:7:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/rails.rb:24:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client/command.rb:7:in `call&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/client.rb:30:in `run&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/bin/spring:49:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/binstub.rb:31:in `load&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/spring-2.0.2/lib/spring/binstub.rb:31:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:70:in `require&amp;#39;
+/home/z/.rbenv/versions/2.5.1/lib/ruby/2.5.0/rubygems/core_ext/kernel_require.rb:70:in `require&amp;#39;
+/home/z/test_ruby/rays/bin/spring:15:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;
+bin/rails:3:in `load&amp;#39;
+bin/rails:3:in `&amp;lt;/top&amp;gt;&amp;lt;/top&amp;gt;&amp;lt;/top&amp;gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;但因为刚才有spring stop，所以这次进入了cold_run。那么它如何分辨cold_run还是warm_run呢？其实就是作为server的UNIXSocket.open(env.socket_name)文件并未建立。于是，如下面源码所述，它会进入boot_server方法，里面会另起一个进程，执行shell命令spring server（env.server_command）&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# spring-2.0.2/lib/spring/client/run.rb
+def connect
+  @server = UNIXSocket.open(env.socket_name)
+end
+
+def call
+  begin
+    connect
+  rescue Errno::ENOENT, Errno::ECONNRESET, Errno::ECONNREFUSED
+    cold_run
+  else
+    warm_run
+  end
+ensure
+  server.close if server
+end
+
+def cold_run
+  boot_server
+  connect
+  run
+end
+
+def boot_server
+  env.socket_path.unlink if env.socket_path.exist?
+
+  pid     = Process.spawn(gem_env, env.server_command, out: File::NULL)
+  timeout = Time.now + BOOT_TIMEOUT
+
+  @server_booted = true
+
+  until env.socket_path.exist?
+    _, status = Process.waitpid2(pid, Process::WNOHANG)
+
+    if status
+      exit status.exitstatus
+    elsif Time.now &amp;gt; timeout
+      $stderr.puts &amp;#34;Starting Spring server with `#{env.server_command}` &amp;#34; \
+                   &amp;#34;timed out after #{BOOT_TIMEOUT} seconds&amp;#34;
+      exit 1
+    end
+
+    sleep 0.1
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而根据lib/spring/client.rb里的命令匹配，&lt;span style=&quot;font-size: medium; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; color: rgb(0, 0, 0); font-family: 微软雅黑; font-variant-caps: normal; font-variant-ligatures: normal;&quot;&gt;shell命令spring server对应的就是Spring::&lt;/span&gt;Client::Server，其执行的就是Spring::Server.boot，于是这就又接回了上面ApplicationManager#run -&amp;gt; ApplicationManager#start_child的调用栈。&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;至此，所有进程间通讯都可串联起来了，图形如下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/64ea7d8a2c7fc2cabdb0d69a990f8905/2a2d595e6ed9a0b24f027f2b63b134d6.gif&quot; type=&quot;image/gif&quot; data-filename=&quot;spring.gif&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">rails新建项目时，已经进行过binstub。这时输入rails c，即调用了spring，会打印出“Running via Spring preloader in process”的字样。可凭这些日志信息，到源码中查找它的调用过程。发现日志由以下方法输出，于是加入pp cal...</summary></entry><entry><title type="html">Resque::Mailer的运作</title><link href="/2019/06/20/d85bb470288b890c0425399f527d303a.html" rel="alternate" type="text/html" title="Resque::Mailer的运作" /><published>2019-06-20T00:00:00+00:00</published><updated>2019-06-20T00:00:00+00:00</updated><id>/2019/06/20/d85bb470288b890c0425399f527d303a</id><content type="html" xml:base="/2019/06/20/d85bb470288b890c0425399f527d303a.html">&lt;div&gt;跟踪一下include了Resque::Mailer的一个ActionMailer::Base子类Notifier的运作&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[2] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;resque_mailer&amp;#39;){ Notifier.send_an_email(&amp;#39;a@b.com&amp;#39;, &amp;#39;subject&amp;#39;, &amp;#39;content&amp;#39;).deliver }
+  Rendered notifier/send_an_email.html.erb within layouts/notifier (1.7ms)
+
+Notifier#send_an_email: processed outbound mail in 70.8ms
+=&amp;gt; true&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/d85bb470288b890c0425399f527d303a/966fd60eee1a84fc34340fc5ada1e04c.html&quot;&gt;&lt;img src=&quot;/assets/files/d85bb470288b890c0425399f527d303a/80575672010a217168e0d4d377d22173.png&quot; alt=&quot;20190620_111819_204_resque_mailer.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;基本流程如下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/d85bb470288b890c0425399f527d303a/be53a0541a6d36f6ecb879fa2c584b08.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;ActionMailer::Base的子类只需定义实例方法，调用时按类方法来调，然后进入method_missing，如果方法action_methods计算出的controller实例方法包含该方法名，则将实际类名、方法名和参数包装成一个MessageDecoy&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Resque
+  module Mailer
+    class &amp;lt;&amp;lt; self
+     def included(base)
+       base.extend(ClassMethods)
+     end
+   end
+
+   module ClassMethods
+     def method_missing(method_name, *args)
+       if action_methods.include?(method_name.to_s)
+         MessageDecoy.new(self, method_name, *args)
+       else
+         super
+       end
+     end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;MessageDecoy的deliver就是通过Resque塞到redis里&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def deliver
+  return deliver! if environment_excluded?
+
+  if @mailer_class.deliver?
+    begin
+      resque.enqueue(@mailer_class, @method_name, @serialized_args)
+    rescue Errno::ECONNREFUSED, Redis::CannotConnectError
+      logger.error &amp;#34;Unable to connect to Redis; falling back to synchronous mail delivery&amp;#34; if logger
+      deliver!
+    end
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;注意塞进resque的参数应是能准确序列化和反序列化的&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">跟踪一下include了Resque::Mailer的一个ActionMailer::Base子类Notifier的运作...</summary></entry><entry><title type="html">bullet如何检测N+1问题</title><link href="/2019/06/11/be1f02950d4458260d73682ed6af2204.html" rel="alternate" type="text/html" title="bullet如何检测N+1问题" /><published>2019-06-11T00:00:00+00:00</published><updated>2019-06-11T00:00:00+00:00</updated><id>/2019/06/11/be1f02950d4458260d73682ed6af2204</id><content type="html" xml:base="/2019/06/11/be1f02950d4458260d73682ed6af2204.html">&lt;div&gt;先在controller里构造出一个N+1查询，然后根据rails log打印出的提示“Add to your finder…”，查找bullet代码，在其中加入打印caller语句，看是哪里开始调用的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Bullet
+  module Notification
+    class NPlusOneQuery &amp;lt; Base
+
+     def body
+       pp &amp;#39;----------------------&amp;#39;
+       pp caller
+       &amp;#34;#{klazz_associations_str}\n  Add to your finder: #{associations_str}&amp;#34;
+     end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/notification/base.rb:41:in `body_with_caller&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/notification/base.rb:61:in `notification_data&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/notification/n_plus_one_query.rb:23:in `notification_data&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/notification/base.rb:45:in `notify_inline&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:177:in `block in gather_inline_notifications&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:243:in `block (2 levels) in for_each_active_notifier_with_notification&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/2.3.0/set.rb:306:in `each_key&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/2.3.0/set.rb:306:in `each&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:241:in `block in for_each_active_notifier_with_notification&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:240:in `each&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:240:in `for_each_active_notifier_with_notification&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet.rb:176:in `gather_inline_notifications&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/rack.rb:23:in `call&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/rack-1.5.5/lib/rack/etag.rb:23:in `call&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/rack-1.5.5/lib/rack/conditionalget.rb:25:in `call&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/rack-1.5.5/lib/rack/head.rb:11:in `call’&amp;#34;,
+# …&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可见其是通过增加一层rack来产生作用的，于是想将其call方法的调用栈打印出来，但鉴于里面@app.call(env)还调了下层rack，可能dump出来的东西太大，所以只关注下Bullet.perform_out_of_channel_notifications这段&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Bullet
+  class Rack
+    include Dependency
+
+    def call(env)
+       # …
+        status, headers, response = @app.call(env)
+        # ...
+        binding.trace_tree(htmp: &amp;#39;bullet_perform&amp;#39;) do
+          Bullet.perform_out_of_channel_notifications(env)
+        end
+      end
+      [status, headers, response_body ? [response_body] : response]
+    ensure
+      Bullet.end_request
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;bullet如何检测N+1问题 [2]_files/47e5d0b8062df7fd8626034f03144506.html&quot;&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/73722b3e42c3ae64a3e212b7e6940f69.png&quot; alt=&quot;20190611_171322_811_bullet_perform.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;但这其实看不出什么，只能看到发现它是将每种警告（notification）塞给警报器（notifier），然后调用notification.notify_out_of_channel来输出警告信息&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def for_each_active_notifier_with_notification
+  UniformNotifier.active_notifiers.each do |notifier|
+    notification_collector.collection.each do |notification|
+      notification.notifier = notifier
+      yield notification
+    end
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是，回到Bullet::Notification::NPlusOneQuery，看其是如何生成的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Bullet
+  module Notification
+    class NPlusOneQuery &amp;lt; Base
+      def initialize(callers, base_class, associations, path = nil)
+        pp &amp;#39;--------------&amp;#39;
+        pp caller
+        super(base_class, associations, path)
+
+        @callers = callers
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;打印出的调用栈很多，连query cache也会new NPlusOneQuery，摘取一条如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;  Load (1.9ms)  SELECT   FROM &amp;#34;stores&amp;#34;  WHERE &amp;#34;stores&amp;#34;.&amp;#34;id&amp;#34; = $1  ORDER BY &amp;#34;stores&amp;#34;.&amp;#34;created_at&amp;#34; ASC LIMIT 1  [[&amp;#34;id&amp;#34;, &amp;#34;......................&amp;#34;]]
+&amp;#34;--------------&amp;#34;
+[&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/detector/n_plus_one_query.rb:91:in `new&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/detector/n_plus_one_query.rb:91:in `create_notification&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/detector/n_plus_one_query.rb:25:in `call_association&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/bullet-6.0.0/lib/bullet/active_record41.rb:164:in `reader&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.3.8/lib/ruby/gems/2.3.0/gems/activerecord-4.1.16/lib/active_record/associations/builder/association.rb:110:in `store&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/Projects/rebasing/r................../app/models/...................rb:31:in `store_name&amp;#39;&amp;#34;,
+&amp;#34;/Users/yuanzhipeng/Projects/rebasing/............../app/views/.................../index.html.erb:69:in `block (2 levels) in _app_views_………..._index_html_erb___202976205520604906_70249725434600’”,&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可见各种Notification是通过重写ActiveRecord的方法，在其中进行拦截而产生的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# bullet-6.0.0/lib/bullet/active_record41.rb
+module Bullet
+  module ActiveRecord
+    def self.enable
+      require ‘active_record&amp;#39;
+
+      ::ActiveRecord::Associations::SingularAssociation.class_eval do
+        # call has_one and belongs_to associations
+        alias_method :origin_reader, :reader
+        def reader(force_reload = false)
+          result = origin_reader(force_reload)
+          if Bullet.start?
+            if @owner.class.name !~ /^HABTM_/ &amp;amp;&amp;amp; !@inversed
+              Bullet::Detector::NPlusOneQuery.call_association(@owner, @reflection.name)
+              Bullet::Detector::NPlusOneQuery.add_possible_objects(result)
+            end
+          end
+          result
+        end
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;call_association产生的Notification会塞入Thread.current[:bullet_notification_collector]，然后add_possible_objects会将对象的类和id记录到Thread.current[:bullet_possible_objects]中&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;但这还是没看出bullet_notification_collector和bullet_possible_objects怎样（甚至有没有）被用于统计N+1。观察rack的代码，感觉其实可以直接跟踪Bullet.start_request和Bullet.end_request包裹查询语句时的执行过程，这样dump出的调用栈会比rack中的少很多，分析起来也方便一些，于是：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[3] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;bullet_not_in_rack&amp;#39;) do
+[3] pry(main)*   begin
+[3] pry(main)*     Bullet.start_request
+[3] pry(main)*     PgOrder.limit(2).map(&amp;amp;:store)
+[3] pry(main)*     Bullet.perform_out_of_channel_notifications
+[3] pry(main)*   ensure
+[3] pry(main)*     Bullet.end_request
+[3] pry(main)*   end
+[3] pry(main)* end
+  PgOrder Load (36.6ms)  SELECT  &amp;#34;orders&amp;#34;.* FROM &amp;#34;orders&amp;#34;   ORDER BY orders.created_at DESC LIMIT 2
+  Store Load (23.4ms)  SELECT  &amp;#34;stores&amp;#34;.* FROM &amp;#34;stores&amp;#34;  WHERE &amp;#34;stores&amp;#34;.&amp;#34;id&amp;#34; = $1  ORDER BY &amp;#34;stores&amp;#34;.&amp;#34;created_at&amp;#34; ASC LIMIT 1  [[&amp;#34;id&amp;#34;, “……………….&amp;#34;]]
+  Store Load (37.8ms)  SELECT  &amp;#34;stores&amp;#34;.* FROM &amp;#34;stores&amp;#34;  WHERE &amp;#34;stores&amp;#34;.&amp;#34;id&amp;#34; = $1  ORDER BY &amp;#34;stores&amp;#34;.&amp;#34;created_at&amp;#34; ASC LIMIT 1  [[&amp;#34;id&amp;#34;, &amp;#34;……………….&amp;#34;]]
+user: yuanzhipeng
+
+USE eager loading detected
+  PgOrder =&amp;gt; [:store]
+  Add to your finder: :includes =&amp;gt; [:store]
+Call stack
+  /Users/yuanzhipeng/Projects/rebasing/………../bin/rails:8:in `&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;
+
+
+=&amp;gt; [UniformNotifier::RailsLogger]
+[4] pry(main)&amp;gt;&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;bullet如何检测N+1问题 [2]_files/e559cdc539086df550aa99838f9001a9.html&quot;&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/fcd70b101af12b2a0dd0ab66c10a8ca6.png&quot; alt=&quot;20190613_112701_996_bullet_not_in_rack.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;再跟踪一下1+1（不是N+1）的情况，即limit(1).map，得调用栈&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;bullet如何检测N+1问题 [2]_files/79c7193508eef8ed26e28d81f1ed90ad.html&quot;&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/3052ce7e5352f762dc1621010a9d0be7.png&quot; alt=&quot;20190613_115732_899_bullet_not_in_rack.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;一对比，可以发现1+1时Bullet.notification_collector.collection是空&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/be53a0541a6d36f6ecb879fa2c584b08.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是检查下call_association的执行路径上，是什么条件导致Bullet.notification_collector没有调用add&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Bullet
+  module Detector
+    class NPlusOneQuery &amp;lt; Association
+      extend Dependency
+      extend StackTraceFilter
+
+      class &amp;lt;&amp;lt;self         #=&quot;&quot; executed=&quot;&quot; when=&quot;&quot; object.assocations=&quot;&quot; is=&quot;&quot; called.=&quot;&quot;         #=&quot;&quot; first,=&quot;&quot; it=&quot;&quot; keeps=&quot;&quot; this=&quot;&quot; method=&quot;&quot; call=&quot;&quot; for=&quot;&quot; object.association.=&quot;&quot;         #=&quot;&quot; then,=&quot;&quot; it=&quot;&quot; checks=&quot;&quot; if=&quot;&quot; this=&quot;&quot; associations=&quot;&quot; call=&quot;&quot; is=&quot;&quot; unpreload.=&quot;&quot;         #   if=&quot;&quot; it=&quot;&quot; is,=&quot;&quot; keeps=&quot;&quot; this=&quot;&quot; unpreload=&quot;&quot; associations=&quot;&quot; and=&quot;&quot; caller.=&quot;&quot;         def=&quot;&quot; call_association(object,=&quot;&quot; associations)=&quot;&quot;           return=&quot;&quot; unless=&quot;&quot; bullet.start?=&quot;&quot;           return=&quot;&quot; unless=&quot;&quot; bullet.n_plus_one_query_enable?=&quot;&quot;           return=&quot;&quot; unless=&quot;&quot; object.bullet_primary_key_value=&quot;&quot;           return=&quot;&quot; if=&quot;&quot; inversed_objects.include?(object.bullet_key,=&quot;&quot; associations)=&quot;&quot;           add_call_object_associations(object,=&quot;&quot; associations)=&quot;&quot;           bullet.debug('detector::nplusonequery#call_association',=&quot;&quot; &quot;object:=&quot;&quot; #{object.bullet_key},=&quot;&quot; associations:=&quot;&quot; #{associations}&quot;)=&quot;&quot;           if=&quot;&quot; !excluded_stacktrace_path?=&quot;&quot; &amp;amp;&amp;amp;=&quot;&quot; conditions_met?(object,=&quot;&quot; associations)=&quot;&quot;             bullet.debug('detect=&quot;&quot; n=&quot;&quot; +=&quot;&quot; 1=&quot;&quot; query',=&quot;&quot; &quot;object:=&quot;&quot; #{object.bullet_key},=&quot;&quot; associations:=&quot;&quot; #{associations}&quot;)=&quot;&quot;             create_notification=&quot;&quot; caller_in_project,=&quot;&quot; object.class.to_s,=&quot;&quot; associations=&quot;&quot;           end=&quot;&quot;         end=&quot;&quot;         private=&quot;&quot;         def=&quot;&quot; create_notification(callers,=&quot;&quot; klazz,=&quot;&quot; associations)=&quot;&quot;           notify_associations=&quot;Array(associations)&quot; -=&quot;&quot; bullet.get_whitelist_associations(:n_plus_one_query,=&quot;&quot; klazz)=&quot;&quot;           if=&quot;&quot; notify_associations.present?=&quot;&quot;             notice=&quot;Bullet::Notification::NPlusOneQuery.new(callers,&quot; klazz,=&quot;&quot; notify_associations)=&quot;&quot;             bullet.notification_collector.add(notice)=&quot;&quot;           end=&quot;&quot;         end&amp;lt;=&quot;&quot; code=&quot;&quot;&amp;gt;&amp;lt;/self&amp;gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;检查call_association中!excluded_stacktrace_path?和conditions_met?(object, associations)的返回值，发现1+1时conditions_met?为false，而N+1时，两次conditions_met?都为true，因此1+1不会有create_notification&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/91eee3f8d75dbb327ede474944726554.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/f7cb588f62bc16ba6c8ac0b4956bd711.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而conditions_met?是这样的：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def conditions_met?(object, associations)
+  possible?(object) &amp;amp;&amp;amp; !impossible?(object) &amp;amp;&amp;amp; !association?(object, associations)
+end
+
+def possible?(object)
+  possible_objects.include? object.bullet_key
+end
+
+def impossible?(object)
+  impossible_objects.include? object.bullet_key
+end
+
+# check if object =&amp;gt; associations already exists in object_associations.
+def association?(object, associations)
+  value = object_associations[object.bullet_key]
+  value&amp;amp;.each do |v|
+      # associations == v comparison order is important here because
+      # v variable might be a squeel node where :== method is redefined,
+      # so it does not compare values at all and return unexpected results
+    result = v.is_a?(Hash) ? v.key?(associations) : associations == v
+    return true if result
+  end
+
+  false
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在调用栈上搜索possible_objects从何处填入，发现是被patch过的find_by_sql&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/caebd5802a502287b56167f6208b00f3.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;当某类的查询返回条数大于1时，就将其纳入“可能N+1”中&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Bullet
+  module ActiveRecord
+    def self.enable
+      require &amp;#39;active_record&amp;#39;
+
+      ::ActiveRecord::Base.class_eval do
+        class &amp;lt;&amp;lt; self
+          alias_method :origin_find_by_sql, :find_by_sql
+          def find_by_sql(sql, binds = [])
+            result = origin_find_by_sql(sql, binds)
+            if Bullet.start?
+              if result.is_a? Array
+                if result.size &amp;gt; 1
+                  Bullet::Detector::NPlusOneQuery.add_possible_objects(result)
+                  Bullet::Detector::CounterCache.add_possible_objects(result)
+                elsif result.size == 1
+                  Bullet::Detector::NPlusOneQuery.add_impossible_object(result.first)
+                  Bullet::Detector::CounterCache.add_impossible_object(result.first)
+                end
+              elsif result.is_a? ::ActiveRecord::Base
+                Bullet::Detector::NPlusOneQuery.add_impossible_object(result)
+                Bullet::Detector::CounterCache.add_impossible_object(result)
+              end
+            end
+            result
+          end
+        end
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而impossible_objects，则在整个调用栈里都没找到add_impossible_object，应该就是因为走了result.size &amp;gt; 1的add_possible_objects而不走add_impossible_object。那为什么还需要possible?(object) &amp;amp;&amp;amp; !impossible?(object)呢？未明……&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;至于association?，其object_associations[object.bullet_key]所得的set是空的，所以没有each循环&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/7788f29195a2edf255b072ee25029997.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;搜索一下代码，见有add_object_associations及一些调用的地方，其中一个如下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;::ActiveRecord::FinderMethods.class_eval do
+  # add includes in scope
+  alias_method :origin_find_with_associations, :find_with_associations
+  def find_with_associations
+    return origin_find_with_associations { |r| yield r } if block_given?
+
+    records = origin_find_with_associations
+    if Bullet.start?
+      associations = (eager_load_values + includes_values).uniq
+      records.each do |record|
+        Bullet::Detector::Association.add_object_associations(record, associations)
+      end
+      Bullet::Detector::UnusedEagerLoading.add_eager_loadings(records, associations)
+    end
+    records
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;但add_object_associations在刚才的调用栈是没有找到的。根据注释，这应该是重写了includes的执行路径，在其中进行拦截。于是跟踪一下includes：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[27] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;bullet_not_in_rack&amp;#39;) do
+[27] pry(main)*   begin
+[27] pry(main)*     Bullet.start_request
+[27] pry(main)*     PgOrder.limit(2).includes(:store).map(&amp;amp;:store)
+[27] pry(main)*     Bullet.perform_out_of_channel_notifications
+[27] pry(main)*   ensure
+[27] pry(main)*     Bullet.end_request
+[27] pry(main)*   end
+[27] pry(main)* end
+  PgOrder Load (23.2ms)  SELECT  &amp;#34;orders&amp;#34;.* FROM &amp;#34;orders&amp;#34;   ORDER BY orders.created_at DESC LIMIT 2
+  Store Load (30.7ms)  SELECT &amp;#34;stores&amp;#34;.* FROM &amp;#34;stores&amp;#34;  WHERE &amp;#34;stores&amp;#34;.&amp;#34;id&amp;#34; IN (&amp;#39;02573e9c-6bee-4771-a1e3-90cdc945d68b&amp;#39;)  ORDER BY &amp;#34;stores&amp;#34;.&amp;#34;created_at&amp;#34; ASC
+=&amp;gt; [UniformNotifier::RailsLogger]
+[28] pry(main)&amp;gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;bullet如何检测N+1问题 [2]_files/3999f125c0d664ec61d5009b093f83e9.html&quot;&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/4fd9d3d9f4e08c885f77fbf3c14526aa.png&quot; alt=&quot;20190613_162136_422_bullet_not_in_rack.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;这includes对add_object_associations的调用是在重写的preloaders_on里的，那find_with_associations应该是其他情况了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/905100afa8889d8584ad793d20552c6f.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;由于这次塞入了object_associations，所以possible?(object) &amp;amp;&amp;amp; !impossible?(object) &amp;amp;&amp;amp; !association?(object, associations)为false，便没有再create_notification了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be1f02950d4458260d73682ed6af2204/7be07b88dd0e09dacc662baaa2e84c35.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;那“多余preload的检测”是怎样执行的呢？猜测是因为没有了call_association的add_call_object_associations，所以应该能在Bullet.perform_out_of_channel_notifications时，筛选出有object_associations但无call_object_associations的associations，进而得出多余的preload&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">先在controller里构造出一个N+1查询，然后根据rails log打印出的提示“Add to your finder…”，查找bullet代码，在其中加入打印caller语句，看是哪里开始调用的...</summary></entry><entry><title type="html">rails的reload机制</title><link href="/2019/06/10/be99fb0e81d437717546e2c29fa28a3a.html" rel="alternate" type="text/html" title="rails的reload机制" /><published>2019-06-10T00:00:00+00:00</published><updated>2019-06-10T00:00:00+00:00</updated><id>/2019/06/10/be99fb0e81d437717546e2c29fa28a3a</id><content type="html" xml:base="/2019/06/10/be99fb0e81d437717546e2c29fa28a3a.html">&lt;div&gt;根据rails guide里constant reloading一节的描述，如果修改了某些代码，想在rails console里重新加载，可输入reload!&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;此命令其实是调用railties-5.2.1/lib/rails/console/app.rb中的Rails.application.reloader.reload!&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是跟踪一下：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[3] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;rails_reload_bang&amp;#39;){ Rails.application.reloader.reload! }&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/ca9222caddf360ba50fdcfcc9c30b9ee.html&quot;&gt;&lt;img src=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/55c2180b5c8a5b9d7868b529be2848e7.png&quot; alt=&quot;20190610_141305_091_rails_reload_bang.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;从activesupport-5.2.1/lib/active_support/reloader.rb来看，这reloader的实现比较复杂，它在实际执行run!和complete!的前后，还要执行ExecutionWrapper的run!和complete!，而这些run!和complete!其实是callback……所以调用栈来回跳跃，还包含了一大堆callback机制的调用……&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activesupport-5.2.1/lib/active_support/reloader.rb
+module ActiveSupport
+  class Reloader &amp;lt; ExecutionWrapper
+
+    def self.reload!
+      executor.wrap do
+        new.tap do |instance|
+          begin
+            instance.run!
+          ensure
+            instance.complete!
+          end
+        end
+      end
+      prepare!
+    end
+
+# activesupport-5.2.1/lib/active_support/execution_wrapper.rb
+module ActiveSupport
+  class ExecutionWrapper
+    include ActiveSupport::Callbacks
+
+    def self.wrap
+      return yield if active?
+      instance = run!
+      begin
+        yield
+      ensure
+        instance.complete!
+      end
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;甚至，reloader里根本没包含任何reload的逻辑，只能从该文件里的一些特别的字眼，如class_unload，去dump出的调用栈里搜索，结果还是发现一些蛛丝马迹：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/be53a0541a6d36f6ecb879fa2c584b08.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;如上，Rails.application.reloader.reload!是会调用class_unload!的，而这个方法会转而调用railties-5.2.1/lib/rails/application/finisher.rb里定义的回调，该回调执行的就是ActiveSupport::DescendantsTracker.clear和ActiveSupport::Dependencies.clear&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# railties-5.2.1/lib/rails/application/finisher.rb
+module Rails
+  class Application
+    module Finisher
+      include Initializable
+
+      initializer :set_clear_dependencies_hook, group: :all do |app|
+        callback = lambda do
+          ActiveSupport::DescendantsTracker.clear
+          ActiveSupport::Dependencies.clear
+        end
+
+        if config.cache_classes
+          app.reloader.check = lambda { false }
+        elsif config.reload_classes_only_on_change
+          app.reloader.check = lambda do
+            app.reloaders.map(&amp;amp;:updated?).any?
+          end
+        else
+          app.reloader.check = lambda { true }
+        end
+
+        if config.reload_classes_only_on_change
+          reloader = config.file_watcher.new(*watchable_args, &amp;amp;callback)
+          reloaders &amp;lt;&amp;lt; reloader
+
+          # Prepend this callback to have autoloaded constants cleared before
+          # any other possible reloading, in case they need to autoload fresh
+          # constants.
+          app.reloader.to_run(prepend: true) do
+            # In addition to changes detected by the file watcher, if routes
+            # or i18n have been updated we also need to clear constants,
+            # that&amp;#39;s why we run #execute rather than #execute_if_updated, this
+            # callback has to clear autoloaded constants after any update.
+            class_unload! do
+              reloader.execute
+            end
+          end
+        else
+          app.reloader.to_complete do
+            class_unload!(&amp;amp;callback)
+          end
+        end
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;其中ActiveSupport::DescendantsTracker.clear用于对include了ActiveSupport::DescendantsTracker的类清理其对子类的跟踪信息&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而ActiveSupport::Dependencies.clear代码量就有点大了，于是另外再跟踪一次：&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[7] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;dep_clear&amp;#39;){ ActiveSupport::Dependencies.clear }&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;得调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/2dc56d6f071dc1313836133a643d0419.html&quot;&gt;&lt;img src=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/2040a73431ba7b40ab17df0cde82d794.png&quot; alt=&quot;20190611_145854_583_dep_clear.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;其实基本骨架还是比较清晰的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def clear
+  Dependencies.unload_interlock do
+    loaded.clear
+    loading.clear
+    remove_unloadable_constants!
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;运行起来就是这样&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/be99fb0e81d437717546e2c29fa28a3a/91eee3f8d75dbb327ede474944726554.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;这里面loaded和loading保存的都是文件路径，用于记录哪些代码文件已经加载过，而remove_unloadable_constants!则是调用remove_constant清除常量，其实现如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def remove_constant(const) #:nodoc:
+  # Normalize ::Foo, ::Object::Foo, Object::Foo, Object::Object::Foo, etc. as Foo.
+  normalized = const.to_s.sub(/\A::/, &amp;#34;&amp;#34;)
+  normalized.sub!(/\A(Object::)+/, &amp;#34;&amp;#34;)
+
+  constants = normalized.split(&amp;#34;::&amp;#34;)
+  to_remove = constants.pop
+
+  # Remove the file path from the loaded list.
+  file_path = search_for_file(const.underscore)
+  if file_path
+    expanded = File.expand_path(file_path)
+    expanded.sub!(/\.rb\z/, &amp;#34;&amp;#34;)
+    loaded.delete(expanded)
+  end
+
+  if constants.empty?
+    parent = Object
+  else
+    # This method is robust to non-reachable constants.
+    #
+    # Non-reachable constants may be passed if some of the parents were
+    # autoloaded and already removed. It is easier to do a sanity check
+    # here than require the caller to be clever. We check the parent
+    # rather than the very const argument because we do not want to
+    # trigger Kernel#autoloads, see the comment below.
+    parent_name = constants.join(&amp;#34;::&amp;#34;)
+    return unless qualified_const_defined?(parent_name)
+    parent = constantize(parent_name)
+  end
+
+  # In an autoloaded user.rb like this
+  #
+  #   autoload :Foo, &amp;#39;foo&amp;#39;
+  #
+  #   class User &amp;lt; ActiveRecord::Base
+  #   end
+  #
+  # we correctly register &amp;#34;Foo&amp;#34; as being autoloaded. But if the app does
+  # not use the &amp;#34;Foo&amp;#34; constant we need to be careful not to trigger
+  # loading &amp;#34;foo.rb&amp;#34; ourselves. While #const_defined? and #const_get? do
+  # require the file, #autoload? and #remove_const don&amp;#39;t.
+  #
+  # We are going to remove the constant nonetheless ---which exists as
+  # far as Ruby is concerned--- because if the user removes the macro
+  # call from a class or module that were not autoloaded, as in the
+  # example above with Object, accessing to that constant must err.
+  unless parent.autoload?(to_remove)
+    begin
+      constantized = parent.const_get(to_remove, false)
+    rescue NameError
+      # The constant is no longer reachable, just skip it.
+      return
+    else
+      constantized.before_remove_const if constantized.respond_to?(:before_remove_const)
+    end
+  end
+
+  begin
+    parent.instance_eval { remove_const to_remove }
+  rescue NameError
+    # The constant is no longer reachable, just skip it.
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;实际上它就是找出一个常量的父级命名空间，然后在其中调用remove_const，并顺便调用before_remove_const（如果有定义的话）&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;至此，class和module什么的应该都被清掉了，当再次读到常量名字时，就又会走Dependencies里定义的const_missing回调去加载代码，实现reload&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">根据rails guide里constant reloading一节的描述，如果修改了某些代码，想在rails console里重新加载，可输入reload!...</summary></entry><entry><title type="html">mongoid显示详细查询语句</title><link href="/2019/03/11/8e13c718ad74a8f371bde9f7f7c38f30.html" rel="alternate" type="text/html" title="mongoid显示详细查询语句" /><published>2019-03-11T00:00:00+00:00</published><updated>2019-03-11T00:00:00+00:00</updated><id>/2019/03/11/8e13c718ad74a8f371bde9f7f7c38f30</id><content type="html" xml:base="/2019/03/11/8e13c718ad74a8f371bde9f7f7c38f30.html">&lt;div&gt;如需mongoid将运作信息打印出来，可在config/application.rb作如下设置&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;config.mongoid.logger = Logger.new($stdout) if Rails.env.development?&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;不过默认输出是截断的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[2] pry(main)&amp;gt; Expense.where(:id.in =&amp;gt; ids).where(:_status.in =&amp;gt; [:checking]).limit(2).pluck(:id)
+D, [2019-03-11T11:24:05.624849 #6236] DEBUG -- : MONGODB | localhost:27017 | reimbursement_development.find | STARTED | {&amp;#34;find&amp;#34;=&amp;gt;&amp;#34;expenses&amp;#34;, &amp;#34;filter&amp;#34;=&amp;gt;{&amp;#34;_id&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[BSON::ObjectId(&amp;#39;5c6e599a6fc4f3326b5b8aea&amp;#39;), BSON::ObjectId(&amp;#39;5c7f92086fc4f33908459afa&amp;#39;), BSON::ObjectId(&amp;#39;5c7f93e66fc4f33908459b11&amp;#39;), BSON::ObjectId(&amp;#39;5c80b9eb6fc4f317d841a69d&amp;#39;)]}, &amp;#34;_status&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[:chec…&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;为了查明输出是在哪里被截断的，需要对logger的打印方法进行拦截&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# ruby/2.5.0/logger.rb
+def add(severity, message = nil, progname = nil)
+  # ...
+  @logdev.write(
+    format_message(format_severity(severity), Time.now, progname, message))
+  true
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;为免重写$stdout的write，从format_message入手。普通的Logger.new使用的是自带的Logger::Formatter，于是对其进行一些包装，对查询语句作拦截，并打印调用栈&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;class MyFormatter &amp;lt; SimpleDelegator
+  def call severity, time, progname, msg
+    if msg =~ /STARTED/
+      puts &amp;#34;--------begin #{msg}---------&amp;#34;
+      puts caller
+      puts &amp;#39;-----------end-------------------------&amp;#39;
+    end
+    super
+  end
+end
+
+config.mongoid.logger = Logger.new($stdout, formatter: MyFormatter.new(Logger::Formatter.new)) if Rails.env.development?&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;再执行一次，可得&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[9] pry(main)&amp;gt; ids = Expense.where(:id.in =&amp;gt; ids).where(:_status.in =&amp;gt; [:checking]).limit(2).pluck(:id)
+--------begin MONGODB | localhost:27017 | reimbursement_development.find | STARTED | {&amp;#34;find&amp;#34;=&amp;gt;&amp;#34;expenses&amp;#34;, &amp;#34;filter&amp;#34;=&amp;gt;{&amp;#34;_id&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[BSON::ObjectId(&amp;#39;5c6e599a6fc4f3326b5b8aea&amp;#39;), BSON::ObjectId(&amp;#39;5c7f92086fc4f33908459afa&amp;#39;)]}, &amp;#34;_status&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[:checking]}}, &amp;#34;limit&amp;#34;=&amp;gt;2, &amp;#34;projection&amp;#34;=&amp;gt;{&amp;#34;_id&amp;#34;=&amp;gt;1}, &amp;#34;lsid&amp;#34;=&amp;gt;{&amp;#34;id&amp;#34;=&amp;gt;&lt;bson::binary:0x70233319695680 type=&quot;uuid&quot; data=&quot;0x3d66dc6bdfa347ac...&quot;&gt;}}---------
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/2.5.0/delegate.rb:85:in `method_missing&amp;#39;
+/Users/yuanzhipeng/Projects/rebasing/reimbursement/config/application.rb:34:in `call&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/2.5.0/logger.rb:584:in `format_message&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/2.5.0/logger.rb:472:in `add&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/2.5.0/logger.rb:493:in `debug&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/loggable.rb:36:in `log_debug&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring/command_log_subscriber.rb:58:in `started&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring.rb:228:in `block in started&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring.rb:228:in `each&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring.rb:228:in `started&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring/publishable.rb:73:in `command_started&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring/publishable.rb:45:in `publish_command&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/server/connection.rb:143:in `dispatch&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/operation/shared/executable.rb:34:in `block in dispatch_message&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/server/connection_pool.rb:110:in `with_connection&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/server.rb:251:in `with_connection&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/operation/shared/executable.rb:33:in `dispatch_message&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/operation/find/op_msg.rb:46:in `execute&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/operation/find.rb:43:in `execute&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/collection/view/iterable.rb:82:in `send_initial_query&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/collection/view/iterable.rb:42:in `block in each&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/retryable.rb:45:in `read_with_retry&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/collection/view/iterable.rb:40:in `each&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/query_cache.rb:222:in `each&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual/mongo.rb:440:in `reduce&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual/mongo.rb:440:in `pluck&amp;#39;
+/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual.rb:20:in `pluck&amp;#39;
+(pry):11:in `&lt;/bson::binary:0x70233319695680&gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;先从started方法看起，可见日志的截断与否是根据options[:truncate_logs]来判断的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# mongo-2.6.2/lib/mongo/monitoring/command_log_subscriber.rb
+module Mongo
+  class Monitoring
+    class CommandLogSubscriber
+      def initialize(options = {})
+        @options = options
+      end
+      def started(event)
+        if logger.debug?
+          log_debug(&amp;#34;#{prefix(event)} | STARTED | #{format_command(event.command)}&amp;#34;)
+        end
+      end
+      def format_command(args)
+        begin
+          truncating? ? truncate(args) : args.inspect
+        rescue Exception
+          &amp;#39;&lt;unable to=&quot;&quot; inspect=&quot;&quot; arguments=&quot;&quot;&gt;&amp;#39;
+        end
+      end
+      def truncate(command)
+        ((s = command.inspect).length &amp;gt; LOG_STRING_LIMIT) ? &amp;#34;#{s[0..LOG_STRING_LIMIT]}...&amp;#34; : s
+      end
+      def truncating?
+        @truncating ||= (options[:truncate_logs] != false)
+      end
+    end
+  end
+end&lt;/unable&gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是在initialize方法打上binding.pry，再执行一次查询并检查调用栈，得&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[1] pry(#&lt;mongo::monitoring::commandlogsubscriber&gt;)&amp;gt; caller
+=&amp;gt; [
+# ...
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring/command_log_subscriber.rb:45:in `initialize&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring.rb:209:in `new&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/monitoring.rb:209:in `initialize&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/client.rb:282:in `new&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongo-2.6.2/lib/mongo/client.rb:282:in `initialize&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients/factory.rb:64:in `new&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients/factory.rb:64:in `create_client&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients/factory.rb:27:in `create&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients.rb:69:in `block in with_name&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients.rb:68:in `synchronize&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients.rb:68:in `with_name&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/persistence_context.rb:114:in `client&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/persistence_context.rb:70:in `collection&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/clients/options.rb:73:in `collection&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual/mongo.rb:342:in `initialize&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual.rb:53:in `new&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual.rb:53:in `create_context&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual.rb:35:in `context&amp;#39;&amp;#34;,
+ &amp;#34;/Users/yuanzhipeng/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid/contextual.rb:20:in `pluck&amp;#39;&amp;#34;,
+ &amp;#34;(pry):1:in `&lt;/mongo::monitoring::commandlogsubscriber&gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;’&amp;#34;,&lt;/code&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;预计options应该是在client到clients之间生成，于是挑中间一个看看，就factory吧&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# mongoid-7.0.2/lib/mongoid/clients/factory.rb
+module Mongoid
+  module Clients
+    module Factory
+      extend self
+      def create(name = nil)
+        return default unless name
+        config = Mongoid.clients[name]
+        raise Errors::NoClientConfig.new(name) unless config
+        create_client(config)
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;检查Mongoid.clients[name]，得&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[2] pry(#&lt;mongo::monitoring::commandlogsubscriber&gt;)&amp;gt; Mongoid.clients
+=&amp;gt; {&amp;#34;default&amp;#34;=&amp;gt;{&amp;#34;database&amp;#34;=&amp;gt;&amp;#34;reimbursement_development&amp;#34;, &amp;#34;hosts&amp;#34;=&amp;gt;[&amp;#34;localhost:27017&amp;#34;], &amp;#34;options&amp;#34;=&amp;gt;nil}}&lt;/mongo::monitoring::commandlogsubscriber&gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;看着像是config/mongoid.yml的配置，于是加上truncate_logs: false，再执行一次查询&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[2] pry(main)&amp;gt; Expense.where(:id.in =&amp;gt; ids).where(:_status.in =&amp;gt; [:checking]).limit(2).pluck(:id)
+D, [2019-03-11T14:20:54.923038 #9874] DEBUG -- : MONGODB | localhost:27017 | reimbursement_development.find | STARTED | {&amp;#34;find&amp;#34;=&amp;gt;&amp;#34;expenses&amp;#34;, &amp;#34;filter&amp;#34;=&amp;gt;{&amp;#34;_id&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[BSON::ObjectId(&amp;#39;5c6e599a6fc4f3326b5b8aea&amp;#39;), BSON::ObjectId(&amp;#39;5c7f92086fc4f33908459afa&amp;#39;), BSON::ObjectId(&amp;#39;5c7f93e66fc4f33908459b11&amp;#39;), BSON::ObjectId(&amp;#39;5c80b9eb6fc4f317d841a69d&amp;#39;)]}, &amp;#34;_status&amp;#34;=&amp;gt;{&amp;#34;$in&amp;#34;=&amp;gt;[:checking]}}, &amp;#34;limit&amp;#34;=&amp;gt;2, &amp;#34;projection&amp;#34;=&amp;gt;{&amp;#34;_id&amp;#34;=&amp;gt;1}, &amp;#34;lsid&amp;#34;=&amp;gt;{&amp;#34;id&amp;#34;=&amp;gt;&lt;bson::binary:0x70328619170500 type=&quot;uuid&quot; data=&quot;0x365fe90814b6464a...&quot;&gt;}}
+D, [2019-03-11T14:20:54.925215 #9874] DEBUG -- : MONGODB | localhost:27017 | reimbursement_development.find | SUCCEEDED | 0.002s
+=&amp;gt; []&lt;/bson::binary:0x70328619170500&gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;成功显示完整查询&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;至于其中的lsid是什么，也来看下。在started方法打上binding.pry检查caller。找了一轮，估计是数据库的session id，考虑到这个键如此独特，直接在源码搜lsid，得&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# mongo-2.6.2/lib/mongo/session.rb
+def add_id!(command)
+  command.merge!(lsid: session_id)
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;确实是session id&lt;/div&gt;</content><author><name></name></author><category term="mongodb" /><category term="rails" /><summary type="html">如需mongoid将运作信息打印出来，可在config/application.rb作如下设置...</summary></entry><entry><title type="html">helper的方法是如何被加到view上的</title><link href="/2018/11/24/6707d0db9659bb2e22b9ff2b29244bfd.html" rel="alternate" type="text/html" title="helper的方法是如何被加到view上的" /><published>2018-11-24T00:00:00+00:00</published><updated>2018-11-24T00:00:00+00:00</updated><id>/2018/11/24/6707d0db9659bb2e22b9ff2b29244bfd</id><content type="html" xml:base="/2018/11/24/6707d0db9659bb2e22b9ff2b29244bfd.html">&lt;div&gt;在controller可调用helper和helper_method，给view增加方法。它们源码如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# actionpack-5.2.1/lib/abstract_controller/helpers.rb
+def helper_method(*meths)
+  meths.flatten!
+  self._helper_methods += meths
+
+  meths.each do |meth|
+    _helpers.class_eval &amp;lt;&amp;lt;-ruby_eval, __FILE__, __LINE__ + 1
+      def #{meth}(*args, &amp;amp;blk)                               # def current_user(*args, &amp;amp;blk)
+        controller.send(%(#{meth}), *args, &amp;amp;blk)             #   controller.send(:current_user, *args, &amp;amp;blk)
+      end                                                    # end
+    ruby_eval
+  end
+end
+
+def helper(*args, &amp;amp;block)
+  modules_for_helpers(args).each do |mod|
+    add_template_helper(mod)
+  end
+
+  _helpers.module_eval(&amp;amp;block) if block_given?
+end
+
+private
+
+def add_template_helper(mod)
+  _helpers.module_eval { include mod }
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可见，这两个方法都是在给_heleprs增加方法。而_helpers是一个module&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module AbstractController
+  module Helpers
+    extend ActiveSupport::Concern
+
+    included do
+      class_attribute :_helpers, default: Module.new
+      class_attribute :_helper_methods, default: Array.new
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;那_helpers是如何mixin到view上的呢？搜寻actionview的代码，可发现&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module ActionView
+  module Rendering
+    extend ActiveSupport::Concern
+    include ActionView::ViewPaths
+
+    module ClassMethods
+      def view_context_class
+        @view_context_class ||= begin
+          supports_path = supports_path?
+          routes  = respond_to?(:_routes)  &amp;amp;&amp;amp; _routes
+          helpers = respond_to?(:_helpers) &amp;amp;&amp;amp; _helpers
+
+          Class.new(ActionView::Base) do
+            if routes
+              include routes.url_helpers(supports_path)
+              include routes.mounted_helpers
+            end
+
+            if helpers
+              include helpers
+            end
+          end
+        end
+      end
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而view_context_class方法正是每个view对象的类，即是每个view类都mixin了对应的helpers。那么这里是如何访问到_helpers方法的呢？给helper module加上断点如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;require &amp;#34;active_support/dependencies&amp;#34;
+      
+module AbstractController
+  module Helpers
+    extend ActiveSupport::Concern
+      
+    included do
+      #class_attribute :_helpers, default: Module.new
+      m = Module.new do
+        def self.included(base)
+          binding.pry
+          super
+        end
+      end
+      class_attribute :_helpers, default: m
+      class_attribute :_helper_methods, default: Array.new
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;然后访问一下humen#index，检查调用栈&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;From: /home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb @ line 13 #&lt;module:0x000055ff5610de60&gt;.included:
+
+   12: def self.included(base)
+=&amp;gt; 13:   binding.pry
+   14:   super
+   15: end
+
+[1] pry(#&lt;module&gt;)&amp;gt; caller
+=&amp;gt; [# ...
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/binding_of_callers-0.1.8/lib/binding_of_callers/pry.rb:12:in `pry&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:13:in `included&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:41:in `include&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:41:in `block in inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:41:in `initialize&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:41:in `new&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:41:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/layouts.rb:219:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/rendering.rb:23:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/parameter_encoding.rb:10:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/params_wrapper.rb:237:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/railties/routes_helpers.rb:9:in `block (2 levels) in with&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/railties/helpers.rb:7:in `inherited&amp;#39;&amp;#34;,
+&amp;#34;/home/z/test_rails/rays/app/controllers/application_controller.rb:1:in `&lt;/module&gt;&lt;/module:0x000055ff5610de60&gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+# ...
+&amp;#34;/home/z/test_rails/rays/app/controllers/humen_controller.rb:1:in `&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+# ...
+]&lt;/code&gt;&lt;/main&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可见当前humen_controller有父类ActionView::Layouts，它的inherited会调用更上一级父类AbstractController::Helpers的inherited。但断点并没出现在ActionView::Rendering的Class.new(ActionView::Base)里，再检查一下，发现AbstractController::Helpers的inherited是给子类HumenController的_helpers赋了一个新的Module.new { include helpers }&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module AbstractController
+  module Helpers
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      def inherited(klass)
+        helpers = _helpers
+        klass._helpers = Module.new { include helpers }
+        klass.class_eval { default_helper_module! } unless klass.anonymous?
+        super
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;于是将断点加在此处&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module AbstractController
+  module Helpers
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      # When a class is inherited, wrap its helper module in a new module.
+      # This ensures that the parent class&amp;#39;s module can be changed
+      # independently of the child class&amp;#39;s.
+      def inherited(klass)
+        helpers = _helpers
+        #klass._helpers = Module.new { include helpers }
+        klass._helpers = Module.new do
+          include helpers
+          def self.included(base)
+            binding.pry
+            super
+          end
+        end
+        klass.class_eval { default_helper_module! } unless klass.anonymous?
+        super
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;这就显示出ActionView::Rendering的Class.new(ActionView::Base)了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;From: /home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb @ line 38 #&lt;module:0x00007f60c8945248&gt;.included:
+
+   37: def self.included(base)
+=&amp;gt; 38:   binding.pry
+   39:   super
+   40: end
+
+[1] pry(#&lt;module&gt;)&amp;gt; caller
+=&amp;gt; [# ...
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/binding_of_callers-0.1.8/lib/binding_of_callers/pry.rb:12:in `pry&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/helpers.rb:38:in `included&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:51:in `include&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:51:in `block in view_context_class&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:44:in `initialize&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:44:in `new&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:44:in `view_context_class&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:61:in `view_context_class&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:74:in `view_context&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:97:in `_render_template&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/streaming.rb:219:in `_render_template&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/rendering.rb:84:in `render_to_body&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/rendering.rb:52:in `render_to_body&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/renderers.rb:142:in `render_to_body&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/abstract_controller/rendering.rb:25:in `render&amp;#39;&amp;#34;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionpack-5.2.1/lib/action_controller/metal/rendering.rb:36:in `render&amp;#39;&amp;#34;
+# ...
+]&lt;/module&gt;&lt;/module:0x00007f60c8945248&gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;至于为什么继承链中会出现Layouts，是因为ActionController有mixin了Layouts&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module ActionController
+  class Base &amp;lt; Metal
+
+    MODULES = [
+      # ..
+      Helpers,
+      # ...
+      ActionView::Layouts,
+       # ...
+    ]
+
+    MODULES.each do |mod|
+      include mod
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而Layouts又mixin了ActionView::Rendering&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module Layouts
+  extend ActiveSupport::Concern
+
+  include ActionView::Rendering&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;作用就是controller处理完业务逻辑后，调用layout -&amp;gt; rendering的render来生成view&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;顺提，helper module中所定义的方法是不能在controller中被直接调用的，从上面源码也可见，我们只是把_helpers给mixin到view上，而没有到controller上，真要在controller上调用的话，得用view_context&lt;/div&gt;</content><author><name></name></author><category term="metaprogramming" /><category term="rails" /><category term="ruby" /><summary type="html">在controller可调用helper和helper_method，给view增加方法。它们源码如下...</summary></entry><entry><title type="html">rails嵌套表单的注意事项</title><link href="/2018/11/20/2a2b6ef8da59f027d238ea8ea24bc072.html" rel="alternate" type="text/html" title="rails嵌套表单的注意事项" /><published>2018-11-20T00:00:00+00:00</published><updated>2018-11-20T00:00:00+00:00</updated><id>/2018/11/20/2a2b6ef8da59f027d238ea8ea24bc072</id><content type="html" xml:base="/2018/11/20/2a2b6ef8da59f027d238ea8ea24bc072.html">&lt;div&gt;&lt;b&gt;accepts_nested_attributes_for与xxx_attributes=方法&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;类方法accepts_nested_attributes_for主要做的就是为指定的accept的关联对象，定义&amp;#34;#{association_name}_attributes=&amp;#34;方法&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activerecord-5.2.1/lib/active_record/nested_attributes.rb
+def accepts_nested_attributes_for(*attr_names)
+  options = { allow_destroy: false, update_only: false }
+  options.update(attr_names.extract_options!)
+  options.assert_valid_keys(:allow_destroy, :reject_if, :limit, :update_only)
+  options[:reject_if] = REJECT_ALL_BLANK_PROC if options[:reject_if] == :all_blank
+
+  attr_names.each do |association_name|
+    if reflection = _reflect_on_association(association_name)
+      reflection.autosave = true
+      define_autosave_validation_callbacks(reflection)
+
+      nested_attributes_options = self.nested_attributes_options.dup
+      nested_attributes_options[association_name.to_sym] = options
+      self.nested_attributes_options = nested_attributes_options
+
+      type = (reflection.collection? ? :collection : :one_to_one)
+      generate_association_writer(association_name, type)
+    else
+      raise ArgumentError, &amp;#34;No association found for name `#{association_name}&amp;#39;. Has it been defined yet?&amp;#34;
+    end
+  end
+end
+
+private
+
+def generate_association_writer(association_name, type)
+  generated_association_methods.module_eval &amp;lt;&amp;lt;-eoruby, __FILE__, __LINE__ + 1
+    silence_redefinition_of_method :#{association_name}_attributes=
+    def #{association_name}_attributes=(attributes)
+      assign_nested_attributes_for_#{type}_association(:#{association_name}, attributes)
+    end
+  eoruby
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;定义得的&amp;#34;#{association_name}_attributes=&amp;#34;，会调用&amp;#34;assign_nested_attributes_for_#{type}_association&amp;#34;，使嵌套提交的&amp;#34;#{association_name}_attributes&amp;#34;能够build到关联对象上，从而最后save关联对象时能够一并save掉&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activerecord-5.2.1/lib/active_record/nested_attributes.rb
+def assign_nested_attributes_for_one_to_one_association(association_name, attributes)
+  # ...
+  if (options[:update_only] || !attributes[&amp;#34;id&amp;#34;].blank?) &amp;amp;&amp;amp; existing_record &amp;amp;&amp;amp;
+    # ...
+  elsif attributes[&amp;#34;id&amp;#34;].present?
+    # ...
+  elsif !reject_new_record?(association_name, attributes)
+    # ...
+  end
+end
+
+def assign_nested_attributes_for_collection_association(association_name, attributes_collection)
+  # ...
+
+  attributes_collection.each do |attributes|
+    # ...
+    if attributes[&amp;#34;id&amp;#34;].blank?
+      # ...
+    elsif existing_record = existing_records.detect { |record| record.id.to_s == attributes[&amp;#34;id&amp;#34;].to_s }
+      # ...
+    else
+      # ...
+    end
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;使用嵌套表单fields_for顺便提交对关联对象的修改，一般会配套使用accepts_nested_attributes_for。&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;如果没有accepts_nested_attributes_for所定义的&amp;#34;#{association_name}_attributes=&amp;#34;方法，则fields_for产生的表单项的name只会是survey[questions][content]，而非survey[questions_attributes][0][content]（假设Survey.has_many :questions）。这样的params只能由后端另外写代码来自行处理。&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# actionview-5.2.1/lib/action_view/helpers/form_helper.rb
+def fields_for(record_name, record_object = nil, fields_options = {}, &amp;amp;block)
+  fields_options, record_object = record_object, nil if record_object.is_a?(Hash) &amp;amp;&amp;amp; record_object.extractable_options?
+  fields_options[:builder] ||= options[:builder]
+  fields_options[:namespace] = options[:namespace]
+  fields_options[:parent_builder] = self
+
+  case record_name
+  when String, Symbol
+    if nested_attributes_association?(record_name)
+      return fields_for_with_nested_attributes(record_name, record_object, fields_options, block)
+    end
+  else
+    record_object = record_name.is_a?(Array) ? record_name.last : record_name
+    record_name   = model_name_from_record_or_class(record_object).param_key
+  end
+
+  # ...
+end
+
+def nested_attributes_association?(association_name)
+  @object.respond_to?(&amp;#34;#{association_name}_attributes=&amp;#34;)
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在controller过滤表单参数时，也是使用&amp;#34;#{association_name}_attributes&amp;#34; =&amp;gt; [...]（注意有_attributes结尾）&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;b&gt;fields_for的&lt;/b&gt;&lt;b&gt;hidden id&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;一般嵌套表单都会给每条关联记录生成一个值为该记录id的hidden input tag，使顺便提交对关联对时能更新到对应关联记录或新增关联记录&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;如果调用field_for时指定了include_id: false，导致生成的嵌套表单没有这个hidden input，或页面上（不知何故真的）没有了这个hidden，或controller过滤参数时没有放过:id，则提交时总会对应不到原记录，而当成新纪录来插入（见上文的attributes[&amp;#34;id&amp;#34;].blank?和existing_records.detect）&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# actionview-5.2.1/lib/action_view/helpers/form_helper.rb
+def fields_for_with_nested_attributes(association_name, association, options, block)
+  # ...
+
+  if association.respond_to?(:to_ary)
+    explicit_child_index = options[:child_index]
+    output = ActiveSupport::SafeBuffer.new
+    association.each do |child|
+      # ...
+      output &amp;lt;&amp;lt; fields_for_nested_model(&amp;#34;#{name}[#{options[:child_index]}]&amp;#34;, child, options, block)
+    end
+    output
+  elsif association
+    fields_for_nested_model(name, association, options, block)
+  end
+end
+
+def fields_for_nested_model(name, object, fields_options, block)
+  # ...
+
+  emit_hidden_id = object.persisted? &amp;amp;&amp;amp; fields_options.fetch(:include_id) {
+    options.fetch(:include_id, true)
+  }
+
+  @template.fields_for(name, object, fields_options) do |f|
+    output = @template.capture(f, &amp;amp;block)
+    output.concat f.hidden_field(:id) if output &amp;amp;&amp;amp; emit_hidden_id &amp;amp;&amp;amp; !f.emitted_hidden_id?
+    output
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">accepts_nested_attributes_for与xxx_attributes=方法...</summary></entry><entry><title type="html">ruby的i18n</title><link href="/2018/11/17/1e82a5983c01248f957db62f84f01d14.html" rel="alternate" type="text/html" title="ruby的i18n" /><published>2018-11-17T00:00:00+00:00</published><updated>2018-11-17T00:00:00+00:00</updated><id>/2018/11/17/1e82a5983c01248f957db62f84f01d14</id><content type="html" xml:base="/2018/11/17/1e82a5983c01248f957db62f84f01d14.html">&lt;div&gt;跟踪一下I18n.t的流程&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[13] pry(main)&amp;gt; I18n;binding.trace_tree(htmp: &amp;#39;i18n_t_key&amp;#39;, return: false){ I18n.t(&amp;#39;helpers.links.show&amp;#39;) }
+=&amp;gt; &amp;#34;查看&amp;#34;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;完整调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/1e82a5983c01248f957db62f84f01d14/e505a461d9175a4d1d275d48df8a41a9.html&quot;&gt;&lt;img src=&quot;/assets/files/1e82a5983c01248f957db62f84f01d14/c36ef380842794ba1477241497e656e0.png&quot; alt=&quot;20181117_211247_900_i18n_t_key.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;b&gt;一般流程&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;大概流程如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/1e82a5983c01248f957db62f84f01d14/be53a0541a6d36f6ecb879fa2c584b08.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;一般来说，默认就是使用Simple这个backend来翻译，它集成了Base的一些通用功能&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;查找翻译值主要是从lookup方法开始，它首先将翻译文件读入，构造成translations这个nested Hash，然后用normalize_keys把待翻译的字符串分解成查找路径，到Hash中挖掘&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def lookup(locale, key, scope = [], options = EMPTY_HASH)
+  init_translations unless initialized?
+  keys = I18n.normalize_keys(locale, key, scope, options[:separator])
+
+  keys.inject(translations) do |result, _key|
+    _key = _key.to_sym
+    return nil unless result.is_a?(Hash) &amp;amp;&amp;amp; result.has_key?(_key)
+    result = result[_key]
+    result = resolve(locale, _key, result, options.merge(:scope =&amp;gt; nil)) if result.is_a?(Symbol)
+    result
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;normalize_keys就是将将传入的待翻译值的路径，分解成数组形式。此数组会用local起头，以分辨出要用哪个语言集合来翻译，然后，如果有scope选项，则加入scope，最后才是待翻译值的查找路径&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;scope的效果，就是会使I18n.t(&amp;#39;helpers.links.show&amp;#39;) 和 I18n.t(&amp;#39;links.show&amp;#39;, scope: :helpers) 等同&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def normalize_keys(locale, key, scope, separator = nil)
+  separator ||= I18n.default_separator
+
+  keys = []
+  keys.concat normalize_key(locale, separator)
+  keys.concat normalize_key(scope, separator)
+  keys.concat normalize_key(key, separator)
+  keys
+end
+
+def normalize_key(key, separator)
+  @@normalized_key_cache[separator][key] ||=
+    case key
+    when Array
+      key.map { |k| normalize_key(k, separator) }.flatten
+    else
+      keys = key.to_s.split(separator)
+      keys.delete(&amp;#39;&amp;#39;)
+      keys.map! { |k| k.to_sym }
+      keys
+    end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而interpolate主要是为了应付此种情况&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# app/views/products/show.html.erb
+&amp;lt;%= t(&amp;#39;product_price&amp;#39;, price: @product.price) %&amp;gt;
+
+# config/locales/en.yml
+en:
+  product_price: &amp;#34;$%{price}&amp;#34;
+# config/locales/es.yml
+es:
+  product_price: &amp;#34;%{price} €&amp;#34;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;b&gt;在请求中指定翻译语言&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可以根据每个请求传来的要求语言来设置翻译语言，并且不影响其他并发的请求，原因在于，设置是一个线程级变量&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;module I18n
+  module Base
+    # Gets I18n configuration object.
+    def config
+      Thread.current[:i18n_config] ||= I18n::Config.new
+    end
+
+    # Sets I18n configuration object.
+    def config=(value)
+      Thread.current[:i18n_config] = value
+    end
+
+    # Write methods which delegates to the configuration object
+    %w(locale backend default_locale available_locales default_separator
+      exception_handler load_path enforce_available_locales).each do |method|
+      module_eval &amp;lt;&amp;lt;-DELEGATORS, __FILE__, __LINE__ + 1
+        def #{method}
+          config.#{method}
+        end
+
+        def #{method}=(value)
+          config.#{method} = (value)
+        end
+      DELEGATORS
+    end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;b&gt;获取整个翻译嵌套Hash&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;只需I18n.t(&amp;#39;.&amp;#39;)。因根据lookup的原理，&amp;#39;.&amp;#39;的路径为[locale]，这就直接取得指定语言的整个翻译集了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;同时，如果想即时加载翻译集，也可使用此法，因为lookup是总会先检查翻译集是否已加载，否则加载&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;b&gt;翻译文件是如何加载的&lt;/b&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;为检查load_path是怎样包含了这么多翻译文件的地址的，对其修改一下，以打印出哪里有调用过&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def load_path
+  #@@load_path ||= []
+  @@load_path ||= (
+    arr = []
+    def arr.&amp;lt;&amp;lt;(*obj)
+      pp [__method__, caller[0], obj]
+      super
+    end
+    arr
+  )
+end
+
+# Sets the load path instance. Custom implementations are expected to
+# behave like a Ruby Array.
+def load_path=(load_path)
+  pp [__method__, caller[1], load_path]
+  @@load_path = load_path
+  @@available_locales_set = nil
+  backend.reload!
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;启动一下rails c，就打印出来了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/i18n.rb:15:in `&amp;lt;top (required)=&quot;&quot;&amp;gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/locale/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activemodel-5.2.1/lib/active_model.rb:76:in `block in &amp;lt;/top&amp;gt;&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activemodel-5.2.1/lib/active_model/locale/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view.rb:96:in `block in &lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/locale/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activerecord-5.2.1/lib/active_record.rb:183:in `block in &lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activerecord-5.2.1/lib/active_record/locale/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/mongoid.rb:33:in `&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/config/locales/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid_orderable-5.2.0/lib/mongoid_orderable.rb:4:in `&lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid_orderable-5.2.0/lib/config/locales/en.yml&amp;#34;]]
+[:&amp;lt;&amp;lt;,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/duck_record-0.0.26/lib/duck_record.rb:64:in `block in &lt;/code&gt;&lt;main&gt;&lt;code&gt;&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/duck_record-0.0.26/lib/duck_record/locale/en.yml&amp;#34;]]
+/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/pry-rails-0.3.6/lib/pry-rails/prompt.rb:36: warning: constant Pry::Prompt::MAP is deprecated
+[:load_path=,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/i18n_railtie.rb:49:in `block in initialize_i18n&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activemodel-5.2.1/lib/active_model/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activerecord-5.2.1/lib/active_record/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid_orderable-5.2.0/lib/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/duck_record-0.0.26/lib/duck_record/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/de.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/es.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/fr.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/it.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/ja.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/pl.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/pt-BR.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/ru.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/tr.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/zh-TW.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/bootstrap.en.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/bootstrap.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/compare_methods.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/dictionary.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/duck_record.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/models.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/mongo_errors.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/web-console-3.7.0/lib/web_console/locales/en.yml&amp;#34;]]
+[:load_path=,
+&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/i18n_railtie.rb:63:in `block in initialize_i18n&amp;#39;&amp;#34;,
+[&amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activesupport-5.2.1/lib/active_support/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activemodel-5.2.1/lib/active_model/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/actionview-5.2.1/lib/action_view/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/activerecord-5.2.1/lib/active_record/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid-7.0.2/lib/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/mongoid_orderable-5.2.0/lib/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/duck_record-0.0.26/lib/duck_record/locale/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/de.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/es.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/fr.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/it.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/ja.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/pl.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/pt-BR.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/ru.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/tr.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/apipie-rails-0.5.13/config/locales/zh-TW.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/bootstrap.en.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/bootstrap.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/compare_methods.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/dictionary.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/duck_record.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/en.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/models.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/mongo_errors.zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/test_rails/reocar_reimbursement/config/locales/zh-CN.yml&amp;#34;,
+  &amp;#34;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/web-console-3.7.0/lib/web_console/locales/en.yml&amp;#34;]]&lt;/code&gt;&lt;/main&gt;&lt;/main&gt;&lt;/main&gt;&lt;/main&gt;&lt;/main&gt;&lt;/main&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;从以上可知，某些gem是会用I18n.load_path数组的:&amp;lt;&amp;lt;方法来塞入自带的翻译文件的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而rails项目中的多语言yml则是用以下的I18n.load_path += 来加载&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;此处的代码比较绕。I18n.load_path += value的value来自于app.config.i18n.load_path，而app.config.i18n.load_path则来自于config.i18n.railties_load_path。这里app.config.i18n是一个ActiveSupport::OrderedOptions。在集合的迭代中修改集合应该是不太推荐的，尽管这里修改的是集合的子集合&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activesupport-5.2.1/lib/active_support/i18n_railtie.rb
+def self.initialize_i18n(app)
+  return if @i18n_inited
+
+  fallbacks = app.config.i18n.delete(:fallbacks)
+
+  # Avoid issues with setting the default_locale by disabling available locales
+  # check while configuring.
+  enforce_available_locales = app.config.i18n.delete(:enforce_available_locales)
+  enforce_available_locales = I18n.enforce_available_locales if enforce_available_locales.nil?
+  I18n.enforce_available_locales = false
+
+  reloadable_paths = []
+  app.config.i18n.each do |setting, value|
+    case setting
+    when :railties_load_path
+      reloadable_paths = value
+      app.config.i18n.load_path.unshift(*value.flat_map(&amp;amp;:existent))
+    when :load_path
+      I18n.load_path += value
+    else
+      I18n.send(&amp;#34;#{setting}=&amp;#34;, value)
+    end
+  end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;为查出config.i18n.railties_load_path的内容是怎样填充进去，把它freeze&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activesupport-5.2.1/lib/active_support/i18n_railtie.rb
+module I18n
+  class Railtie &amp;lt; Rails::Railtie
+    config.i18n = ActiveSupport::OrderedOptions.new
+    config.i18n.railties_load_path = [].freeze&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;使其报错并显示出调用栈&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;/home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/railties-5.2.1/lib/rails/engine.rb:589:in `block in &lt;class:engine&gt;&amp;#39;: can&amp;#39;t modify frozen Array (FrozenError)
+    from /home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/railties-5.2.1/lib/rails/initializable.rb:32:in `instance_exec&amp;#39;
+    from /home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/railties-5.2.1/lib/rails/initializable.rb:32:in `run&amp;#39;
+    from /home/z/.rbenv/versions/2.5.1/lib/ruby/gems/2.5.0/gems/railties-5.2.1/lib/rails/initializable.rb:61:in `block in run_initializers&amp;#39;
+...&lt;/class:engine&gt;&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;可见它是rails初始化时塞入的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# railties-5.2.1/lib/rails/engine.rb
+initializer :add_locales do
+  config.i18n.railties_load_path &amp;lt;&amp;lt; paths[&amp;#34;config/locales&amp;#34;]
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;paths方法是委托到railties-5.2.1/lib/rails/engine/configuration.rb的。Rails::Paths::Root的用途看上去比较好懂，就不分析了&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def paths
+  @paths ||= begin
+    paths = Rails::Paths::Root.new(@root)
+
+    paths.add &amp;#34;app&amp;#34;,                 eager_load: true, glob: &amp;#34;{*,*/concerns}&amp;#34;
+    paths.add &amp;#34;app/assets&amp;#34;,          glob: &amp;#34;*&amp;#34;
+    paths.add &amp;#34;app/controllers&amp;#34;,     eager_load: true
+    paths.add &amp;#34;app/channels&amp;#34;,        eager_load: true, glob: &amp;#34;**/*_channel.rb&amp;#34;
+    paths.add &amp;#34;app/helpers&amp;#34;,         eager_load: true
+    paths.add &amp;#34;app/models&amp;#34;,          eager_load: true
+    paths.add &amp;#34;app/mailers&amp;#34;,         eager_load: true
+    paths.add &amp;#34;app/views&amp;#34;
+
+    paths.add &amp;#34;lib&amp;#34;,                 load_path: true
+    paths.add &amp;#34;lib/assets&amp;#34;,          glob: &amp;#34;*&amp;#34;
+    paths.add &amp;#34;lib/tasks&amp;#34;,           glob: &amp;#34;**/*.rake&amp;#34;
+
+    paths.add &amp;#34;config&amp;#34;
+    paths.add &amp;#34;config/environments&amp;#34;, glob: &amp;#34;#{Rails.env}.rb&amp;#34;
+    paths.add &amp;#34;config/initializers&amp;#34;, glob: &amp;#34;**/*.rb&amp;#34;
+    paths.add &amp;#34;config/locales&amp;#34;,      glob: &amp;#34;*.{rb,yml}&amp;#34;
+    paths.add &amp;#34;config/routes.rb&amp;#34;
+
+    paths.add &amp;#34;db&amp;#34;
+    paths.add &amp;#34;db/migrate&amp;#34;
+    paths.add &amp;#34;db/seeds.rb&amp;#34;
+
+    paths.add &amp;#34;vendor&amp;#34;,              load_path: true
+    paths.add &amp;#34;vendor/assets&amp;#34;,       glob: &amp;#34;*&amp;#34;
+
+    paths
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="ruby" /><summary type="html">跟踪一下I18n.t的流程...</summary></entry><entry><title type="html">resque任务的优先级</title><link href="/2018/07/09/4a19e429022be2a309f80b7570beb5a9.html" rel="alternate" type="text/html" title="resque任务的优先级" /><published>2018-07-09T00:00:00+00:00</published><updated>2018-07-09T00:00:00+00:00</updated><id>/2018/07/09/4a19e429022be2a309f80b7570beb5a9</id><content type="html" xml:base="/2018/07/09/4a19e429022be2a309f80b7570beb5a9.html">&lt;div&gt;当以下面形式启动worker时，worker每次读取redis总是会优先获取file_serve队列任务，当file_serve找不到，才会去找warm_cache队列&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;QUEUES=file_serve,warm_cache rake resque:work&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;源码如下。&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;循环去reserve出一个job，而reserve是按QUEUES的顺序来读job的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;# lib/resque/worker.rb&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;def work(interval = 5.0, &amp;amp;block)
+  interval = Float(interval)
+  $0 = &amp;#34;resque: Starting&amp;#34;
+  startup
+
+  loop do
+    break if shutdown?
+
+    if not paused? and job = reserve
+      # ...
+          perform(job, &amp;amp;block)
+      # ...
+    else
+      # ...
+      sleep interval
+    end
+  end
+end
+
+def reserve
+  queues.each do |queue|
+    log! &amp;#34;Checking #{queue}&amp;#34;
+    if job = Resque.reserve(queue)
+      log! &amp;#34;Found job on #{queue}&amp;#34;
+      return job
+    end
+  end
+  # ...
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;</content><author><name></name></author><category term="redis" /><category term="ruby" /><summary type="html">当以下面形式启动worker时，worker每次读取redis总是会优先获取file_serve队列任务，当file_serve找不到，才会去找warm_cache队列...</summary></entry><entry><title type="html">ActiveRecord的嵌套事务</title><link href="/2018/05/17/53b73b26cbe120091cf00a8904a6b87a.html" rel="alternate" type="text/html" title="ActiveRecord的嵌套事务" /><published>2018-05-17T00:00:00+00:00</published><updated>2018-05-17T00:00:00+00:00</updated><id>/2018/05/17/53b73b26cbe120091cf00a8904a6b87a</id><content type="html" xml:base="/2018/05/17/53b73b26cbe120091cf00a8904a6b87a.html">&lt;div&gt;先看现象，再看源码&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在父transaction作rollback，两个都rollback&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[2] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;tx_rollback_parent&amp;#39;){ Post.transaction{ Post.create(title: &amp;#39;b&amp;#39;); Post.transaction{ Post.create(title: &amp;#39;c&amp;#39;) }; raise ActiveRecord::Rollback } }
+   (26.5ms)  BEGIN
+  SQL (40.3ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:04:54.258657&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;b&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:04:54.258657&amp;#34;]]
+  SQL (41.7ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:04:57.019647&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;c&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:04:57.019647&amp;#34;]]
+   (27.0ms)  ROLLBACK
+=&amp;gt; nil&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/84d1df5a971e044ae5dda19a554928a0.html&quot;&gt;&lt;img src=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/8702ce0f58578dbfcd5a048d70fcd6f3.png&quot; alt=&quot;20190627_130453_469_tx_rollback_parent.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在子transaction作rollback，两个都commit&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[3] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;tx_rollback_child&amp;#39;){ Post.transaction{ Post.create(title: &amp;#39;b&amp;#39;); Post.transaction{ Post.create(title: &amp;#39;c&amp;#39;); raise ActiveRecord::Rollback } } }
+   (25.1ms)  BEGIN
+  SQL (38.4ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:05:15.824843&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;b&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:05:15.824843&amp;#34;]]
+  SQL (39.7ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:05:18.605931&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;c&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:05:18.605931&amp;#34;]]
+   (25.2ms)  COMMIT
+=&amp;gt; nil&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/00cc968d6cba7a20f7c96116b4526626.html&quot;&gt;&lt;img src=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/f425b7c5f3f48fe0e301a1dbc33f4578.png&quot; alt=&quot;20190627_130515_228_tx_rollback_child.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;子transaction有requires_new，在父transaction作rollback，两个都rollback&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[4] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;tx_rq_new_rollback_parent&amp;#39;){ Post.transaction{ Post.create(title: &amp;#39;b&amp;#39;); Post.transaction(requires_new: true){ Post.create(title: &amp;#39;c&amp;#39;) }; raise ActiveRecord::Rollback } }
+   (25.5ms)  BEGIN
+  SQL (41.8ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:05:34.815014&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;b&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:05:34.815014&amp;#34;]]
+   (27.1ms)  SAVEPOINT active_record_1
+  SQL (42.6ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:05:37.624946&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;c&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:05:37.624946&amp;#34;]]
+   (26.8ms)  RELEASE SAVEPOINT active_record_1
+   (26.9ms)  ROLLBACK
+=&amp;gt; nil&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/813636f0dd571346b2cd5870c95d02dc.html&quot;&gt;&lt;img src=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/1d298612b87003fac5541c86b5a8592f.png&quot; alt=&quot;20190627_130534_104_tx_rq_new_rollback_parent.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;子transaction有requires_new，在子transaction作rollback，只有子transaction会rollback，而父transaction会commit&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;[5] pry(main)&amp;gt; binding.trace_tree(htmp: &amp;#39;tx_rq_new_rollback_child&amp;#39;){ Post.transaction{ Post.create(title: &amp;#39;b&amp;#39;); Post.transaction(requires_new: true){ Post.create(title: &amp;#39;c&amp;#39;); raise ActiveRecord::Rollback } } }
+   (26.3ms)  BEGIN
+  SQL (38.3ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:05:57.555988&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;b&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:05:57.555988&amp;#34;]]
+   (27.3ms)  SAVEPOINT active_record_1
+  SQL (42.3ms)  INSERT INTO &amp;#34;posts&amp;#34; (&amp;#34;created_at&amp;#34;, &amp;#34;title&amp;#34;, &amp;#34;updated_at&amp;#34;) VALUES ($1, $2, $3) RETURNING &amp;#34;id&amp;#34;  [[&amp;#34;created_at&amp;#34;, &amp;#34;2019-06-27 13:06:00.295987&amp;#34;], [&amp;#34;title&amp;#34;, &amp;#34;c&amp;#34;], [&amp;#34;updated_at&amp;#34;, &amp;#34;2019-06-27 13:06:00.295987&amp;#34;]]
+   (29.6ms)  ROLLBACK TO SAVEPOINT active_record_1
+   (26.0ms)  COMMIT
+=&amp;gt; nil&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;调用栈如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;a href=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/db0ebc1fe781ffbeb92c076a457e1cb1.html&quot;&gt;&lt;img src=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/712ac0af5b85e64fa86251a91506704e.png&quot; alt=&quot;20190627_130556_760_tx_rq_new_rollback_child.html&quot; /&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;如何实现子事务rollback而不影响父事务呢？&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;在未调用过transaction的情况下（current_transaction为joinable?等于false的伪事务ClosedTransaction），或者requires_new为false、nil的情况下，transaction都会走within_new_transaction，其他情况会直接yield&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;而因为我们调用的transaction方法，其实是Thread.current中持有的connection的transaction方法，所以直接yield的时候，尽管是transaction{ transaction{} }，但表现起来这两个block是串行而非嵌套的&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;当利用requires_new开启子事务时，父与子block的CRUD才是嵌套运行在不同的within_new_transaction之中的。这时，子事务的ActiveRecord::Rollback或其他Exception，会在本层捕获，然后调用rollback_transaction，给数据库发rollback命令。之后再把异常往上抛给transaction方法，transaction方法会忽略ActiveRecord::Rollback，这就使得父事务不会因子事务的ActiveRecord::Rollback而rollback，但其他类型的异常还是会导致父事务rollback&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activerecord-4.1.4/lib/active_record/connection_adapters/abstract/database_statements.rb
+module ActiveRecord
+  module ConnectionAdapters
+    module DatabaseStatements
+
+      def transaction(options = {})
+        options.assert_valid_keys :requires_new, :joinable, :isolation
+
+        if !options[:requires_new] &amp;amp;&amp;amp; current_transaction.joinable?
+          if options[:isolation]
+            raise ActiveRecord::TransactionIsolationError, &amp;#34;cannot set isolation when joining a transaction&amp;#34;
+          end
+
+          yield
+        else
+          within_new_transaction(options) { yield }
+        end
+      rescue ActiveRecord::Rollback
+        # rollbacks are silently swallowed
+      end
+
+      def within_new_transaction(options = {}) #:nodoc:
+        transaction = begin_transaction(options)
+        yield
+      rescue Exception =&amp;gt; error
+        rollback_transaction if transaction
+        raise
+      ensure
+        begin
+          commit_transaction unless error
+        rescue Exception
+          rollback_transaction
+          raise
+        end
+      end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;begin_transaction调用的是当前transaction实例的begin方法，如果当前@transaction是顶级的伪事务ClosedTransaction，则会开一个RealTransaction，否则检查是否finishing?（finishing?可通过掉rollback和commit置为true，一般不会手动调用，而是让事务block的rescue和ensure来调），不是finishing?则会开一个SavepointTransaction，并设置其parent为当前@transaction。当begin方法返回时@transaction会赋值为新的transaction实例，源码如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activerecord-4.1.4/lib/active_record/connection_adapters/abstract/database_statements.rb
+def begin_transaction(options = {})
+  @transaction = @transaction.begin(options)
+end
+
+def commit_transaction
+  @transaction = @transaction.commit
+end
+
+def rollback_transaction
+  @transaction = @transaction.rollback
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;（在rails 5中，父子结构是使用栈实现的，栈顶是子，子事务运行完，则会pop掉）&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;此外，SavepointTransaction的初始化过程中还会调用connection.create_savepoint，底层运作是让具体数据库adapter发送创建savepoint的语句，如下流程&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;img src=&quot;/assets/files/53b73b26cbe120091cf00a8904a6b87a/be53a0541a6d36f6ecb879fa2c584b08.png&quot; type=&quot;image/png&quot; data-filename=&quot;Image.png&quot; /&gt;&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;rollback的实现同理，要分开RealTransaction和SavepointTransaction，SavepointTransaction发的是rollback savepoint命令，RealTransaction发rollback&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;源码如下&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;# activerecord-4.1.4/lib/active_record/connection_adapters/abstract/transaction.rb
+module ActiveRecord
+  module ConnectionAdapters
+
+    class ClosedTransaction &amp;lt; Transaction    
+      def begin(options = {})
+        RealTransaction.new(connection, self, options)
+      end
+    end
+  
+    class OpenTransaction &amp;lt; Transaction
+      def begin(options = {})
+        if finishing?
+          parent.begin
+        else
+          SavepointTransaction.new(connection, self, options)
+        end
+      end
+
+      def rollback
+        @finishing = true
+        perform_rollback
+        parent
+      end
+    end
+
+    class RealTransaction &amp;lt; OpenTransaction
+      def perform_rollback
+        connection.rollback_db_transaction
+        rollback_records
+      end
+    end
+
+    class SavepointTransaction &amp;lt; OpenTransaction194
+      def perform_rollback
+        connection.rollback_to_savepoint
+        rollback_records
+      end
+    end
+
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;那为什么非require_new的子transaction里raise ActiveRecord::Rollback，对父子都没有影响呢？&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;还是看回transaction和within_new_transaction的源码。没有require_new时，子transaction是的rollback实际是&lt;/div&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;pre&gt;&lt;code&gt;transaction do
+  within_new_transaction do
+    transaction do
+      raise ActiveRecord::Rollback
+    end
+  end
+end&lt;/code&gt;&lt;/pre&gt;
+&lt;div&gt;&lt;br /&gt;&lt;/div&gt;
+&lt;div&gt;内层transaction并没有自己的&lt;span style=&quot;font-size: medium; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; color: rgb(0, 0, 0); font-family: 微软雅黑; font-variant-caps: normal; font-variant-ligatures: normal;&quot;&gt;within_new_transaction的rescue调用&lt;/span&gt;rollback_transaction方法，而且，transaction方法本来就会吃掉ActiveRecord::Rollback，所以，也不会让父事务感知，于是没有任何rollback，这其实也不构成父子事务。当然其他异常还是会导致整个事务rollback的&lt;/div&gt;</content><author><name></name></author><category term="rails" /><category term="ruby" /><summary type="html">先看现象，再看源码...</summary></entry></feed>

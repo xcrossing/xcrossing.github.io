@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.6.1 -->
+<title>Ruby的ARGF</title>
+<meta name="generator" content="Jekyll v3.8.6" />
+<meta property="og:title" content="Ruby的ARGF" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="unix命令如cat，grep，sed，既可以读取命令行参数中指定的文件的内容，也可以读取stdin的输入（当命令行参数中无文件时 ）。若想在ruby中实现类似功能，可这样：…" />
+<meta property="og:description" content="unix命令如cat，grep，sed，既可以读取命令行参数中指定的文件的内容，也可以读取stdin的输入（当命令行参数中无文件时 ）。若想在ruby中实现类似功能，可这样：…" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2016-09-07T00:00:00+00:00" />
+<script type="application/ld+json">
+{"description":"unix命令如cat，grep，sed，既可以读取命令行参数中指定的文件的内容，也可以读取stdin的输入（当命令行参数中无文件时 ）。若想在ruby中实现类似功能，可这样：…","@type":"BlogPosting","headline":"Ruby的ARGF","dateModified":"2016-09-07T00:00:00+00:00","url":"/2016/09/07/2013ea314566cdd4e252d65195b48ddf.html","datePublished":"2016-09-07T00:00:00+00:00","mainEntityOfPage":{"@type":"WebPage","@id":"/2016/09/07/2013ea314566cdd4e252d65195b48ddf.html"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">some<strong>think</strong></a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/tags.html">标签</a><a class="page-link" href="/statistic.html">统计</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Ruby的ARGF</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2016-09-07T00:00:00+00:00" itemprop="datePublished">Sep 7, 2016
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <div>unix命令如cat，grep，sed，既可以读取命令行参数中指定的文件的内容，也可以读取stdin的输入（当命令行参数中无文件时 ）。若想在ruby中实现类似功能，可这样：</div>
+<div><br /></div>
+<pre><code># cat.rb
+
+if ARGV.length &gt; 0
+  ARGV.each do |filename|
+    puts File.read(filename)
+  end
+else
+  puts STDIN.read
+end</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>先读取ARGV，，如没有文件，则STDIN。使用方法如下：</div>
+<div><br /></div>
+<pre><code>$ ruby cat.rb file1 file2
+Contents of file1
+Contents of file2
+$ echo &#34;Contents of standard input&#34; | ruby cat.rb
+Contents of standard input</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>虽然能跑，但此实现方法太过纠结于输入从何处而来，并且puts语句在两个分支中重复了。为了解决这个问题，可用ARGF：</div>
+<div><br /></div>
+<pre><code># argf.rb
+
+puts ARGF.read</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>这样，你就无需关心输入流来自哪里了。</div>
+<div><br /></div>
+<div>而对于ARGF，api文档是这么说的：</div>
+<div><br /></div>
+<div>ARGF is a stream designed for use in scripts that process files given as command-line arguments or passed in via STDIN.</div>
+<div><br /></div>
+<div>即是，ARGF.read的处理流程如刚才的if ARGV else STDIN。</div>
+<div><br /></div>
+<div>因此，无论你用if..else..，还是ARGF，--color、--line-buffered之类的标志都必须先从ARGV中拿掉，否则将这些标志当成文件来读取时，就会报错No such file or directory。</div>
+<div><br /></div>
+<div>而自己在程序中加到ARGV的文件名，也会被ARGF读到。</div>
+<div><br /></div>
+<div>同if..else..一样，读的过程中，会先将文件名从ARGV里shift出</div>
+<div><br /></div>
+<div>使用cat时，如果既想读文件，又想读stdin，可这样：</div>
+<div><br /></div>
+<pre><code>$ echo &#34;Contents of standard input&#34; | cat file1 - file2
+Contents of file1
+Contents of standard input
+Contents of file2</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>对此，ARGF也是很方便地支持了：</div>
+<div><br /></div>
+<pre><code>$ echo &#34;Contents of standard input&#34; | ruby argf.rb file1 - file2
+Contents of file1
+Contents of standard input
+Contents of file2</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>如果想得知正在读取的是那个文件，可用#file，它返回File对象（如果是stdin，则是IO对象）：</div>
+<div><br /></div>
+<pre><code># file.rb
+
+p ARGF.file
+ARGF.read(ARGF.file.size + 1) # The extra byte read is EOF
+p ARGF.file
+ARGF.read(ARGF.file.size + 1)
+p ARGF.file</code></pre>
+<div><br /></div>
+<div><br /></div>
+<div>测试：</div>
+<div><br /></div>
+<pre><code>$ echo &#34;Contents of standard input&#34; | ruby file.rb file1 file2 -
+#<file:file1>
+#<file:file2>
+#&lt;io:<stdin>&gt;&lt;/io:<stdin>&lt;/file:file2&gt;&lt;/file:file1&gt;&lt;/code&gt;&lt;/pre&gt;<div><br /></div><div><br /></div><div>若只需要文件名，用#filename。</div><div><br /></div><div>如果你只想读取某些文件……例如只想要YAML，那么可如下例，使用#close来跳到下个文件：</div><div><br /></div><pre><code># front_matter.rb
+
+ARGF.each_line do |line|
+  if ARGF.lineno &gt; 1 &amp;&amp; line == &#34;---\n&#34;
+    ARGF.close
+  end
+  puts line
+end</code></pre><div><br /></div><div><br /></div><div>测试：</div><div><br /></div><pre><code>$ ruby front_matter.rb post1.md post2.md
+---
+title: My First Blog Post
+---
+---
+title: My Second Blog Post
+---</code></pre><div><br /></div>
+</stdin></stdin></file:file2></file:file1></code></pre>
+
+  </div><a class="u-url" href="/2016/09/07/2013ea314566cdd4e252d65195b48ddf.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading"></h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name"></li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p></p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
