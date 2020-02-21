@@ -95,7 +95,7 @@
 <div><br /></div>
 <div>得调用栈如下</div>
 <div><br /></div>
-<div><a href="bullet如何检测N+1问题 [2]_files/47e5d0b8062df7fd8626034f03144506.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/73722b3e42c3ae64a3e212b7e6940f69.png" alt="20190611_171322_811_bullet_perform.html" /></a></div>
+<div><a href="/assets/files/be1f02950d4458260d73682ed6af2204/47e5d0b8062df7fd8626034f03144506.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/73722b3e42c3ae64a3e212b7e6940f69.png" alt="20190611_171322_811_bullet_perform.html" /></a></div>
 <div><br /></div>
 <div>但这其实看不出什么，只能看到发现它是将每种警告（notification）塞给警报器（notifier），然后调用notification.notify_out_of_channel来输出警告信息</div>
 <div><br /></div>
@@ -139,7 +139,7 @@ end</code></pre>
 module Bullet
   module ActiveRecord
     def self.enable
-      require ‘active_record&#39;
+      require &#39;active_record&#39;
 
       ::ActiveRecord::Associations::SingularAssociation.class_eval do
         # call has_one and belongs_to associations
@@ -186,11 +186,11 @@ Call stack
 <div><br /></div>
 <div>得调用栈如下</div>
 <div><br /></div>
-<div><a href="bullet如何检测N+1问题 [2]_files/e559cdc539086df550aa99838f9001a9.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/fcd70b101af12b2a0dd0ab66c10a8ca6.png" alt="20190613_112701_996_bullet_not_in_rack.html" /></a></div>
+<div><a href="/assets/files/be1f02950d4458260d73682ed6af2204/e559cdc539086df550aa99838f9001a9.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/fcd70b101af12b2a0dd0ab66c10a8ca6.png" alt="20190613_112701_996_bullet_not_in_rack.html" /></a></div>
 <div><br /></div>
 <div>再跟踪一下1+1（不是N+1）的情况，即limit(1).map，得调用栈</div>
 <div><br /></div>
-<div><a href="bullet如何检测N+1问题 [2]_files/79c7193508eef8ed26e28d81f1ed90ad.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/3052ce7e5352f762dc1621010a9d0be7.png" alt="20190613_115732_899_bullet_not_in_rack.html" /></a></div>
+<div><a href="/assets/files/be1f02950d4458260d73682ed6af2204/79c7193508eef8ed26e28d81f1ed90ad.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/3052ce7e5352f762dc1621010a9d0be7.png" alt="20190613_115732_899_bullet_not_in_rack.html" /></a></div>
 <div><br /></div>
 <div>一对比，可以发现1+1时Bullet.notification_collector.collection是空</div>
 <div><br /></div>
@@ -318,7 +318,7 @@ end</code></pre>
 <div><br /></div>
 <div>得调用栈：</div>
 <div><br /></div>
-<div><a href="bullet如何检测N+1问题 [2]_files/3999f125c0d664ec61d5009b093f83e9.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/4fd9d3d9f4e08c885f77fbf3c14526aa.png" alt="20190613_162136_422_bullet_not_in_rack.html" /></a></div>
+<div><a href="/assets/files/be1f02950d4458260d73682ed6af2204/3999f125c0d664ec61d5009b093f83e9.html"><img src="/assets/files/be1f02950d4458260d73682ed6af2204/4fd9d3d9f4e08c885f77fbf3c14526aa.png" alt="20190613_162136_422_bullet_not_in_rack.html" /></a></div>
 <div><br /></div>
 <div>这includes对add_object_associations的调用是在重写的preloaders_on里的，那find_with_associations应该是其他情况了</div>
 <div><br /></div>

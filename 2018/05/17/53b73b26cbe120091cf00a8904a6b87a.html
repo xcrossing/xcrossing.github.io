@@ -100,7 +100,7 @@
 <div><br /></div>
 <div><a href="/assets/files/53b73b26cbe120091cf00a8904a6b87a/db0ebc1fe781ffbeb92c076a457e1cb1.html"><img src="/assets/files/53b73b26cbe120091cf00a8904a6b87a/712ac0af5b85e64fa86251a91506704e.png" alt="20190627_130556_760_tx_rq_new_rollback_child.html" /></a></div>
 <div><br /></div>
-<div>如何实现子事务rollback而不影响父事务呢？</div>
+<div><b>上述的子事务rollback而不影响父事务是如何实现的呢？</b></div>
 <div><br /></div>
 <div>在未调用过transaction的情况下（current_transaction为joinable?等于false的伪事务ClosedTransaction），或者requires_new为false、nil的情况下，transaction都会走within_new_transaction，其他情况会直接yield</div>
 <div><br /></div>
@@ -163,7 +163,7 @@ end</code></pre>
 <div><br /></div>
 <div>此外，SavepointTransaction的初始化过程中还会调用connection.create_savepoint，底层运作是让具体数据库adapter发送创建savepoint的语句，如下流程</div>
 <div><br /></div>
-<div><img src="/assets/files/53b73b26cbe120091cf00a8904a6b87a/be53a0541a6d36f6ecb879fa2c584b08.png" type="image/png" data-filename="Image.png" /></div>
+<div><img src="/assets/files/53b73b26cbe120091cf00a8904a6b87a/be53a0541a6d36f6ecb879fa2c584b08.png" type="image/png" data-filename="Image.png" /><br /></div>
 <div><br /></div>
 <div>rollback的实现同理，要分开RealTransaction和SavepointTransaction，SavepointTransaction发的是rollback savepoint命令，RealTransaction发rollback</div>
 <div><br /></div>
@@ -212,7 +212,7 @@ module ActiveRecord
   end
 end</code></pre>
 <div><br /></div>
-<div>那为什么非require_new的子transaction里raise ActiveRecord::Rollback，对父子都没有影响呢？</div>
+<div><b>那为什么非require_new的子transaction里raise ActiveRecord::Rollback，对父子都没有影响呢？</b></div>
 <div><br /></div>
 <div>还是看回transaction和within_new_transaction的源码。没有require_new时，子transaction是的rollback实际是</div>
 <div><br /></div>
@@ -224,7 +224,13 @@ end</code></pre>
   end
 end</code></pre>
 <div><br /></div>
-<div>内层transaction并没有自己的<span style="font-size: medium; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; color: rgb(0, 0, 0); font-family: 微软雅黑; font-variant-caps: normal; font-variant-ligatures: normal;">within_new_transaction的rescue调用</span>rollback_transaction方法，而且，transaction方法本来就会吃掉ActiveRecord::Rollback，所以，也不会让父事务感知，于是没有任何rollback，这其实也不构成父子事务。当然其他异常还是会导致整个事务rollback的</div>
+<div>内层transaction并没有自己的<span style="font-size: medium; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; color: rgb(0, 0, 0); font-family: 微软雅黑; font-variant-caps: normal; font-variant-ligatures: normal;">within_new_transaction，所以没有rescue调用</span>rollback_transaction方法，而且，transaction方法本来就会吃掉ActiveRecord::Rollback，所以，也不会让父事务感知，于是没有任何rollback，这其实也不构成父子事务。当然其他异常还是会导致整个事务rollback的。</div>
+<div><br /></div>
+<div><b>使用技巧</b></div>
+<div><br /></div>
+<div>如果确定当前事务会被嵌套使用，而且希望所有嵌套在外的事务都会因为内层的错误而rollback，那就raise ActiveRecord::Rollback以外的异常。</div>
+<div><br /></div>
+<div>如果希望只rollback内层的事务，则使用requires_new和raise ActiveRecord::Rollback。</div>
 
   </div><a class="u-url" href="/2018/05/17/53b73b26cbe120091cf00a8904a6b87a.html" hidden></a>
 </article>

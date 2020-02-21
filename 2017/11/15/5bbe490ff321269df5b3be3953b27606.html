@@ -46,7 +46,7 @@
 <div><br /></div>
 <pre><code>class StudentsController &lt; ApplicationController
   def show
-    id = params[:id]                                                                                                                                                                                                                    
+    id = params[:id]
     @student =binding.trace_tree(htmp: &#39;ar/query_cache&#39;) do
       Student.find id
       Student.find id
@@ -302,10 +302,10 @@ module ActionDispatch
         response = @app.call(env)
         returned = response &lt;&lt; ::Rack::BodyProxy.new(response.pop) { state.complete! }
       ensure
-        state.complete! unless returned                                                                                                                                                   
-      end                                                                                                                                                                                                                               
-    end                                                                                                                                                                                   
-  end                                                                                                                                                                                     
+        state.complete! unless returned              
+      end                                                                                           
+    end                                             
+  end                                             
 end</code></pre>
 <div><br /></div>
 <div><br /></div>

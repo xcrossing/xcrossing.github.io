@@ -42,7 +42,7 @@
   </header>
 
   <div class="post-content e-content" itemprop="articleBody">
-    <div><b>flash方法的来源</b></div>
+    <div><span style="font-weight: bold;">flash方法的来源</span></div>
 <div><br /></div>
 <div>跟踪一下view中的flash方法如何运行</div>
 <div><br /></div>
@@ -100,7 +100,7 @@ helpers.rb:46:    include ControllerHelper</code></pre>
 end</code></pre>
 <div><br /></div>
 <div><br /></div>
-<div><b>flash的运作</b></div>
+<div><span style="font-weight: bold;">flash的运作</span></div>
 <div><br /></div>
 <div>再跟踪一下如何在controller中设置flash</div>
 <div><br /></div>
@@ -122,7 +122,7 @@ end</code></pre>
   end</code></pre>
 <div><br /></div>
 <div><br /></div>
-<div>可见，在一次请求中FlashHash只会生成一次，并缓存与env中</div>
+<div>可见，在一次请求中FlashHash只会生成一次，并缓存于env中</div>
 <div><br /></div>
 <div><img src="/assets/files/dccc5ba4a8ddb664e0932843fcfb3a77/91eee3f8d75dbb327ede474944726554.png" type="image/png" data-filename="Image.png" style="height: auto;" /></div>
 <div><br /></div>
@@ -241,7 +241,7 @@ end</code></pre>
   end</code></pre>
 <div><br /></div>
 <div><br /></div>
-<div><b>关于keep</b></div>
+<div><span style="font-weight: bold;">关于keep</span></div>
 <div><br /></div>
 <div>keep很简单，就是在@discard排除掉想保留的key，让它在下次请求仍然可用</div>
 <div><br /></div>
@@ -252,7 +252,7 @@ end</code></pre>
 end</code></pre>
 <div><br /></div>
 <div><br /></div>
-<div><b>关于flash.now</b></div>
+<div><span style="font-weight: bold;">关于flash.now</span></div>
 <div><br /></div>
 <div>根据刚才的分析，在同一次请求中多次调用flash，用的都是同一个FlashHash，它缓存在env中，那么rails guide中对flash.now的介绍似乎就没有必要了</div>
 <div><br /></div>

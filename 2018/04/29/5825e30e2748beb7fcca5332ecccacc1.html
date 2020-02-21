@@ -44,7 +44,7 @@
   <div class="post-content e-content" itemprop="articleBody">
     <div>此gem最基本的用法就是model中调用acts_as_taggable来使model具备被贴标签的能力。跟踪一下该方法：</div>
 <div><br /></div>
-<div>[6] pry(main)&gt; binding.trace_tree(htmp: &#39;acts_as_taggable&#39;){Student.acts_as_taggable}</div>
+<pre><code>[6] pry(main)&gt; binding.trace_tree(htmp: &#39;acts_as_taggable&#39;){Student.acts_as_taggable}</code></pre>
 <div><br /></div>
 <div>完整调用栈如下</div>
 <div><br /></div>
@@ -56,37 +56,37 @@
 <div><br /></div>
 <div>源码如下</div>
 <div><br /></div>
-<div>def taggable_on(preserve_tag_order, *tag_types)</div>
-<div>  tag_types = tag_types.to_a.flatten.compact.map(&amp;:to_sym)</div>
-<div><br /></div>
-<div>  if taggable?</div>
-<div>    self.tag_types = (self.tag_types + tag_types).uniq</div>
-<div>    self.preserve_tag_order = preserve_tag_order</div>
-<div>  else</div>
-<div>    class_attribute :tag_types</div>
-<div>    self.tag_types = tag_types</div>
-<div>    class_attribute :preserve_tag_order</div>
-<div>    self.preserve_tag_order = preserve_tag_order</div>
-<div><br /></div>
-<div>    class_eval do</div>
-<div>      has_many :taggings, as: :taggable, dependent: :destroy, class_name: &#39;::ActsAsTaggableOn::Tagging&#39;</div>
-<div>      has_many :base_tags, through: :taggings, source: :tag, class_name: &#39;::ActsAsTaggableOn::Tag&#39;</div>
-<div><br /></div>
-<div>      def self.taggable?</div>
-<div>        true</div>
-<div>      end</div>
-<div>    end</div>
-<div>  end</div>
-<div><br /></div>
-<div>  # each of these add context-specific methods and must be</div>
-<div>  # called on each call of taggable_on</div>
-<div>  include Core</div>
-<div>  include Collection</div>
-<div>  include Cache</div>
-<div>  include Ownership</div>
-<div>  include Related</div>
-<div>  include Dirty</div>
-<div>end</div>
+<pre><code>def taggable_on(preserve_tag_order, *tag_types)
+  tag_types = tag_types.to_a.flatten.compact.map(&amp;:to_sym)
+
+  if taggable?
+    self.tag_types = (self.tag_types + tag_types).uniq
+    self.preserve_tag_order = preserve_tag_order
+  else
+    class_attribute :tag_types
+    self.tag_types = tag_types
+    class_attribute :preserve_tag_order
+    self.preserve_tag_order = preserve_tag_order
+
+    class_eval do
+      has_many :taggings, as: :taggable, dependent: :destroy, class_name: &#39;::ActsAsTaggableOn::Tagging&#39;
+      has_many :base_tags, through: :taggings, source: :tag, class_name: &#39;::ActsAsTaggableOn::Tag&#39;
+
+      def self.taggable?
+        true
+      end
+    end
+  end
+
+  # each of these add context-specific methods and must be
+  # called on each call of taggable_on
+  include Core
+  include Collection
+  include Cache
+  include Ownership
+  include Related
+  include Dirty
+end</code></pre>
 <div><br /></div>
 <div>首先，此module本身有返回false的taggable?方法，这个方法会在使用has_many与标签表完成关联后，被重定义为true。下次再调用acts_as_taggable时，便可是识别出已关联标签表，只需给类属性tag_types增加标签类型，以及修改preserve_tag_order。</div>
 <div><br /></div>
@@ -94,13 +94,13 @@
 <div><br /></div>
 <div>于是看看tag_list方法是怎么运行的：</div>
 <div><br /></div>
-<div>[10] pry(main)&gt; st = Student.first</div>
-<div>  Student Load (0.1ms)  SELECT  &#34;students&#34;.* FROM &#34;students&#34; ORDER BY &#34;students&#34;.&#34;id&#34; ASC LIMIT ?  [[&#34;LIMIT&#34;, 1]]</div>
-<div>=&gt; #&lt;Student:0x007fc03b5a9918 name: &#34;carl&#34;, created_at: Sun, 02 Jul 2017 04:10:00 UTC +00:00, updated_at: Mon, 06 Nov 2017 15:30:57 UTC +00:00, gender: &#34;male&#34;, grade: 1, alias_names: [], id: 2&gt;</div>
-<div>[11] pry(main)&gt; binding.trace_tree(htmp: &#39;tag_lst&#39;){st.tag_list}</div>
-<div>  ActsAsTaggableOn::Tagging Load (27.1ms)  SELECT &#34;taggings&#34;.* FROM &#34;taggings&#34; WHERE &#34;taggings&#34;.&#34;taggable_id&#34; = ? AND &#34;taggings&#34;.&#34;taggable_type&#34; = ?  [[&#34;taggable_id&#34;, 2], [&#34;taggable_type&#34;, &#34;Student&#34;]]</div>
-<div>  ActsAsTaggableOn::Tag Load (33.4ms)  SELECT &#34;tags&#34;.* FROM &#34;tags&#34; INNER JOIN &#34;taggings&#34; ON &#34;tags&#34;.&#34;id&#34; = &#34;taggings&#34;.&#34;tag_id&#34; WHERE &#34;taggings&#34;.&#34;taggable_id&#34; = ? AND &#34;taggings&#34;.&#34;taggable_type&#34; = ? AND (taggings.context = &#39;tags&#39; AND taggings.tagger_id IS NULL)  [[&#34;taggable_id&#34;, 2], [&#34;taggable_type&#34;, &#34;Student&#34;]]</div>
-<div>=&gt; []</div>
+<pre><code>[10] pry(main)&gt; st = Student.first
+  Student Load (0.1ms)  SELECT  &#34;students&#34;.* FROM &#34;students&#34; ORDER BY &#34;students&#34;.&#34;id&#34; ASC LIMIT ?  [[&#34;LIMIT&#34;, 1]]
+=&gt; #&lt;student:0x007fc03b5a9918 name:="" "carl",="" created_at:="" sun,="" 02="" jul="" 2017="" 04:10:00="" utc="" +00:00,="" updated_at:="" mon,="" 06="" nov="" 2017="" 15:30:57="" utc="" +00:00,="" gender:="" "male",="" grade:="" 1,="" alias_names:="" [],="" id:="" 2=""&gt;
+[11] pry(main)&gt; binding.trace_tree(htmp: &#39;tag_lst&#39;){st.tag_list}
+  ActsAsTaggableOn::Tagging Load (27.1ms)  SELECT &#34;taggings&#34;.* FROM &#34;taggings&#34; WHERE &#34;taggings&#34;.&#34;taggable_id&#34; = ? AND &#34;taggings&#34;.&#34;taggable_type&#34; = ?  [[&#34;taggable_id&#34;, 2], [&#34;taggable_type&#34;, &#34;Student&#34;]]
+  ActsAsTaggableOn::Tag Load (33.4ms)  SELECT &#34;tags&#34;.* FROM &#34;tags&#34; INNER JOIN &#34;taggings&#34; ON &#34;tags&#34;.&#34;id&#34; = &#34;taggings&#34;.&#34;tag_id&#34; WHERE &#34;taggings&#34;.&#34;taggable_id&#34; = ? AND &#34;taggings&#34;.&#34;taggable_type&#34; = ? AND (taggings.context = &#39;tags&#39; AND taggings.tagger_id IS NULL)  [[&#34;taggable_id&#34;, 2], [&#34;taggable_type&#34;, &#34;Student&#34;]]
+=&gt; []&lt;/student:0x007fc03b5a9918&gt;</code></pre>
 <div><br /></div>
 <div>完整调用栈如下</div>
 <div><br /></div>
@@ -116,78 +116,80 @@
 <div><br /></div>
 <div>多次执行acts_as_taggable_on是没有问题的，因为只是重定义relation和匿名类上的方法</div>
 <div><br /></div>
-<div>module ActsAsTaggableOn::Taggable</div>
-<div>  module Core</div>
-<div>    def self.included(base)</div>
-<div>      base.extend ActsAsTaggableOn::Taggable::Core::ClassMethods</div>
+<pre><code>module ActsAsTaggableOn::Taggable
+  module Core
+    def self.included(base)
+      base.extend ActsAsTaggableOn::Taggable::Core::ClassMethods
+
+      base.class_eval do
+        attr_writer :custom_contexts
+        after_save :save_tags
+      end
+
+      base.initialize_acts_as_taggable_on_core
+    end
+
+
+    module ClassMethods
+      def initialize_acts_as_taggable_on_core
+        include taggable_mixin
+        tag_types.map(&amp;:to_s).each do |tags_type|
+          tag_type = tags_type.to_s.singularize
+          context_taggings = &#34;#{tag_type}_taggings&#34;.to_sym
+          context_tags = tags_type.to_sym
+          taggings_order = (preserve_tag_order? ? &#34;#{ActsAsTaggableOn::Tagging.table_name}.id&#34; : [])
+
+          class_eval do
+            # when preserving tag order, include order option so that for a &#39;tags&#39; context
+            # the associations tag_taggings &amp; tags are always returned in created order
+            has_many context_taggings, -&gt; { includes(:tag).order(taggings_order).where(context: tags_type) },
+                     as: :taggable,
+                     class_name: ActsAsTaggableOn::Tagging,
+                     dependent: :destroy
+
+            has_many context_tags, -&gt; { order(taggings_order) },
+                     class_name: ActsAsTaggableOn::Tag,
+                     through: context_taggings,
+                     source: :tag
+          end
+
+          taggable_mixin.class_eval &lt;&lt;-RUBY, __FILE__, __LINE__ + 1
+            def #{tag_type}_list
+              tag_list_on(&#39;#{tags_type}&#39;)
+            end
+
+            def #{tag_type}_list=(new_tags)
+              set_tag_list_on(&#39;#{tags_type}&#39;, new_tags)
+            end
+
+            def all_#{tags_type}_list
+              all_tags_list_on(&#39;#{tags_type}&#39;)
+            end
+          RUBY
+        end
+      end</code></pre>
 <div><br /></div>
-<div>      base.class_eval do</div>
-<div>        attr_writer :custom_contexts</div>
-<div>        after_save :save_tags</div>
-<div>      end</div>
-<div><br /></div>
-<div>      base.initialize_acts_as_taggable_on_core</div>
-<div>    end</div>
-<div><br /></div>
-<div>    module ClassMethods</div>
-<div>      def initialize_acts_as_taggable_on_core</div>
-<div>        include taggable_mixin</div>
-<div>        tag_types.map(&amp;:to_s).each do |tags_type|</div>
-<div>          tag_type = tags_type.to_s.singularize</div>
-<div>          context_taggings = &#34;#{tag_type}_taggings&#34;.to_sym</div>
-<div>          context_tags = tags_type.to_sym</div>
-<div>          taggings_order = (preserve_tag_order? ? &#34;#{ActsAsTaggableOn::Tagging.table_name}.id&#34; : [])</div>
-<div><br /></div>
-<div>          class_eval do</div>
-<div>            # when preserving tag order, include order option so that for a &#39;tags&#39; context</div>
-<div>            # the associations tag_taggings &amp; tags are always returned in created order</div>
-<div>            has_many context_taggings, -&gt; { includes(:tag).order(taggings_order).where(context: tags_type) },</div>
-<div>                     as: :taggable,</div>
-<div>                     class_name: ActsAsTaggableOn::Tagging,</div>
-<div>                     dependent: :destroy</div>
-<div><br /></div>
-<div>            has_many context_tags, -&gt; { order(taggings_order) },</div>
-<div>                     class_name: ActsAsTaggableOn::Tag,</div>
-<div>                     through: context_taggings,</div>
-<div>                     source: :tag</div>
-<div>          end</div>
-<div><br /></div>
-<div>          taggable_mixin.class_eval &lt;&lt;-RUBY, __FILE__, __LINE__ + 1</div>
-<div>            def #{tag_type}_list</div>
-<div>              tag_list_on(&#39;#{tags_type}&#39;)</div>
-<div>            end</div>
-<div><br /></div>
-<div>            def #{tag_type}_list=(new_tags)</div>
-<div>              set_tag_list_on(&#39;#{tags_type}&#39;, new_tags)</div>
-<div>            end</div>
-<div><br /></div>
-<div>            def all_#{tags_type}_list</div>
-<div>              all_tags_list_on(&#39;#{tags_type}&#39;)</div>
-<div>            end</div>
-<div>          RUBY</div>
-<div>        end</div>
-<div>      end</div>
 <div><br /></div>
 <div>接着看tag_list的实际运行。就是连接tags和taggings两个表，然后将标签名转化成ActsAsTaggableOn::TagList</div>
 <div><br /></div>
-<div>def tag_list_cache_on(context)</div>
-<div>  variable_name = &#34;@#{context.to_s.singularize}_list&#34;</div>
-<div>  if instance_variable_get(variable_name)</div>
-<div>    instance_variable_get(variable_name)</div>
-<div>  elsif cached_tag_list_on(context) &amp;&amp; self.class.caching_tag_list_on?(context)</div>
-<div>    instance_variable_set(variable_name, ActsAsTaggableOn.default_parser.new(cached_tag_list_on(context)).parse)</div>
-<div>  else</div>
-<div>    instance_variable_set(variable_name, ActsAsTaggableOn::TagList.new(tags_on(context).map(&amp;:name)))</div>
-<div>  end</div>
-<div>end</div>
-<div><br /></div>
-<div>def tags_on(context)</div>
-<div>  scope = base_tags.where([&#34;#{ActsAsTaggableOn::Tagging.table_name}.context = ? AND #{ActsAsTaggableOn::Tagging.table_name}.tagger_id IS NULL&#34;, context.to_s])</div>
-<div>  # when preserving tag order, return tags in created order</div>
-<div>  # if we added the order to the association this would always apply</div>
-<div>  scope = scope.order(&#34;#{ActsAsTaggableOn::Tagging.table_name}.id&#34;) if self.class.preserve_tag_order?</div>
-<div>  scope</div>
-<div>end</div>
+<pre><code>def tag_list_cache_on(context)
+  variable_name = &#34;@#{context.to_s.singularize}_list&#34;
+  if instance_variable_get(variable_name)
+    instance_variable_get(variable_name)
+  elsif cached_tag_list_on(context) &amp;&amp; self.class.caching_tag_list_on?(context)
+    instance_variable_set(variable_name, ActsAsTaggableOn.default_parser.new(cached_tag_list_on(context)).parse)
+  else
+    instance_variable_set(variable_name, ActsAsTaggableOn::TagList.new(tags_on(context).map(&amp;:name)))
+  end
+end
+
+def tags_on(context)
+  scope = base_tags.where([&#34;#{ActsAsTaggableOn::Tagging.table_name}.context = ? AND #{ActsAsTaggableOn::Tagging.table_name}.tagger_id IS NULL&#34;, context.to_s])
+  # when preserving tag order, return tags in created order
+  # if we added the order to the association this would always apply
+  scope = scope.order(&#34;#{ActsAsTaggableOn::Tagging.table_name}.id&#34;) if self.class.preserve_tag_order?
+  scope
+end</code></pre>
 <div><br /></div>
 
   </div><a class="u-url" href="/2018/04/29/5825e30e2748beb7fcca5332ecccacc1.html" hidden></a>

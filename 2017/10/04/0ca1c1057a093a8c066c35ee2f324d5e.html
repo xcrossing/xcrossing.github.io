@@ -44,12 +44,13 @@
   <div class="post-content e-content" itemprop="articleBody">
     <div>先跟踪一下has_paper_trail方法是干什么的</div>
 <div><br /></div>
-<div>[1] pry(main)&gt; Student</div>
-<div>=&gt; Student (call &#39;Student.connection&#39; to establish a connection)</div>
-<div>[2] pry(main)&gt; class Student</div>
-<div>[2] pry(main)*   binding.trace_tree(htmp: &#39;paper_trail/has&#39;){ has_paper_trail }</div>
-<div>[2] pry(main)* end  </div>
-<div>=&gt; []</div>
+<pre><code>[1] pry(main)&gt; Student
+=&gt; Student (call &#39;Student.connection&#39; to establish a connection)
+[2] pry(main)&gt; class Student
+[2] pry(main)*   binding.trace_tree(htmp: &#39;paper_trail/has&#39;){ has_paper_trail }
+[2] pry(main)* end  
+=&gt; []</code></pre>
+<div><br /></div>
 <div><br /></div>
 <div>调用栈如下</div>
 <div><br /></div>
@@ -57,35 +58,37 @@
 <div><br /></div>
 <div>可见其主要就是让model类include了PaperTrail::Model::InstanceMethods，然后再加一些callback，拦截model的增删改，骨干如下</div>
 <div><br /></div>
-<div><img src="/assets/files/0ca1c1057a093a8c066c35ee2f324d5e/be53a0541a6d36f6ecb879fa2c584b08.png" type="image/png" data-filename="Image.png" /></div>
+<div><img src="/assets/files/0ca1c1057a093a8c066c35ee2f324d5e/be53a0541a6d36f6ecb879fa2c584b08.png" type="image/png" data-filename="Image.png" /><br /></div>
 <div><br /></div>
 <div>源码如下</div>
 <div><br /></div>
-<div># Set up `@model_class` for PaperTrail. Installs callbacks, associations,</div>
-<div># &#34;class attributes&#34;, instance methods, and more.</div>
-<div># @api private</div>
-<div>def setup(options = {})</div>
-<div>  options[:on] ||= %i[create update destroy]</div>
-<div>  options[:on] = Array(options[:on]) # Support single symbol</div>
-<div>  @model_class.send :include, ::PaperTrail::Model::InstanceMethods</div>
-<div>  if ::ActiveRecord::VERSION::STRING &lt; &#34;4.2&#34;</div>
-<div>    ::ActiveSupport::Deprecation.warn(</div>
-<div>      &#34;Your version of ActiveRecord (&lt; 4.2) has reached EOL. PaperTrail &#34; \</div>
-<div>      &#34;will soon drop support. Please upgrade ActiveRecord ASAP.&#34;</div>
-<div>    )</div>
-<div>    @model_class.send :extend, AttributeSerializers::LegacyActiveRecordShim</div>
-<div>  end</div>
-<div>  setup_options(options)</div>
-<div>  setup_associations(options)</div>
-<div>  setup_transaction_callbacks</div>
-<div>  setup_callbacks_from_options options[:on]</div>
-<div>  setup_callbacks_for_habtm options[:join_tables]</div>
-<div>end</div>
+<pre><code># Set up `@model_class` for PaperTrail. Installs callbacks, associations,
+# &#34;class attributes&#34;, instance methods, and more.
+# @api private
+def setup(options = {})
+  options[:on] ||= %i[create update destroy]
+  options[:on] = Array(options[:on]) # Support single symbol
+  @model_class.send :include, ::PaperTrail::Model::InstanceMethods
+  if ::ActiveRecord::VERSION::STRING &lt; &#34;4.2&#34;
+    ::ActiveSupport::Deprecation.warn(
+      &#34;Your version of ActiveRecord (&lt; 4.2) has reached EOL. PaperTrail &#34; \
+      &#34;will soon drop support. Please upgrade ActiveRecord ASAP.&#34;
+    )
+    @model_class.send :extend, AttributeSerializers::LegacyActiveRecordShim
+  end
+  setup_options(options)
+  setup_associations(options)
+  setup_transaction_callbacks
+  setup_callbacks_from_options options[:on]
+  setup_callbacks_for_habtm options[:join_tables]
+end</code></pre>
+<div><br /></div>
 <div><br /></div>
 <div>其中setup_options是对options进行“整理”和指定默认值。如果仅仅调用has_paper_trail，没给什么选项，那么默认就是这样</div>
 <div><br /></div>
-<div>[14] pry(main)&gt; Student.paper_trail_options</div>
-<div>=&gt; {:on=&gt;[:create, :update, :destroy], :ignore=&gt;[], :skip=&gt;[], :only=&gt;[], :meta=&gt;{}, :save_changes=&gt;true}</div>
+<pre><code>[14] pry(main)&gt; Student.paper_trail_options
+=&gt; {:on=&gt;[:create, :update, :destroy], :ignore=&gt;[], :skip=&gt;[], :only=&gt;[], :meta=&gt;{}, :save_changes=&gt;true}</code></pre>
+<div><br /></div>
 <div><br /></div>
 <div>setup_associations是建立versions关联，使能通过student.versions查到过往版本。关联的名字可以通过:versions选项指定，但一般不建议改</div>
 <div><br /></div>
@@ -95,54 +98,57 @@
 <div><br /></div>
 <div>而setup_callbacks_from_options options，正是版本记录的功能所在，其源码如下。如果调用has_paper_trail时没有指定忽略增删改哪个事件，那么三个on*都会设置</div>
 <div><br /></div>
-<div>def setup_callbacks_from_options(options_on = [])</div>
-<div>  options_on.each do |event|</div>
-<div>    public_send(&#34;on_#{event}&#34;)</div>
-<div>  end</div>
-<div>end</div>
-<div><br /></div>
-<div># Adds a callback that records a version after a &#34;create&#34; event.</div>
-<div>def on_create</div>
-<div>  @model_class.after_create { |r|</div>
-<div>    r.paper_trail.record_create if r.paper_trail.save_version?</div>
-<div>  }</div>
-<div>  return if @model_class.paper_trail_options[:on].include?(:create)</div>
-<div>  @model_class.paper_trail_options[:on] &lt;&lt; :create</div>
-<div>end</div>
-<div><br /></div>
-<div># Adds a callback that records a version before or after a &#34;destroy&#34; event.</div>
-<div>def on_destroy(recording_order = &#34;before&#34;)</div>
-<div>  unless %w[after before].include?(recording_order.to_s)</div>
-<div>    raise ArgumentError, &#39;recording order can only be &#34;after&#34; or &#34;before&#34;&#39;</div>
-<div>  end</div>
-<div><br /></div>
-<div>  if recording_order.to_s == &#34;after&#34; &amp;&amp; cannot_record_after_destroy?</div>
-<div>    ::ActiveSupport::Deprecation.warn(E_CANNOT_RECORD_AFTER_DESTROY)</div>
-<div>  end</div>
-<div><br /></div>
-<div>  @model_class.send(</div>
-<div>    &#34;#{recording_order}_destroy&#34;,</div>
-<div>    -&gt;(r) { r.paper_trail.record_destroy if r.paper_trail.save_version? }</div>
-<div>  )</div>
-<div><br /></div>
-<div>  return if @model_class.paper_trail_options[:on].include?(:destroy)</div>
-<div>  @model_class.paper_trail_options[:on] &lt;&lt; :destroy</div>
-<div>end</div>
-<div><br /></div>
-<div># Adds a callback that records a version after an &#34;update&#34; event.</div>
-<div>def on_update</div>
-<div>  @model_class.before_save(on: :update) { |r|</div>
-<div>    r.paper_trail.reset_timestamp_attrs_for_update_if_needed</div>
-<div>  }</div>
-<div>  @model_class.after_update { |r|</div>
-<div>    r.paper_trail.record_update(nil) if r.paper_trail.save_version?</div>
-<div>  }</div>
-<div>  @model_class.after_update { |r|</div>
-<div>    r.paper_trail.clear_version_instance</div>
-<div>  }</div>
-<div>  return if @model_class.paper_trail_options[:on].include?(:update)</div>
-<div>  @model_class.paper_trail_options[:on] &lt;&lt; :update</div>
-<div>end</div>
+<pre><code>def setup_callbacks_from_options(options_on = [])
+  options_on.each do |event|
+    public_send(&#34;on_#{event}&#34;)
+  end
+end
+
+
+# Adds a callback that records a version after a &#34;create&#34; event.
+def on_create
+  @model_class.after_create { |r|
+    r.paper_trail.record_create if r.paper_trail.save_version?
+  }
+  return if @model_class.paper_trail_options[:on].include?(:create)
+  @model_class.paper_trail_options[:on] &lt;&lt; :create
+end
+
+
+# Adds a callback that records a version before or after a &#34;destroy&#34; event.
+def on_destroy(recording_order = &#34;before&#34;)
+  unless %w[after before].include?(recording_order.to_s)
+    raise ArgumentError, &#39;recording order can only be &#34;after&#34; or &#34;before&#34;&#39;
+  end
+
+  if recording_order.to_s == &#34;after&#34; &amp;&amp; cannot_record_after_destroy?
+    ::ActiveSupport::Deprecation.warn(E_CANNOT_RECORD_AFTER_DESTROY)
+  end
+
+  @model_class.send(
+    &#34;#{recording_order}_destroy&#34;,
+    -&gt;(r) { r.paper_trail.record_destroy if r.paper_trail.save_version? }
+  )
+
+  return if @model_class.paper_trail_options[:on].include?(:destroy)
+  @model_class.paper_trail_options[:on] &lt;&lt; :destroy
+end
+
+
+# Adds a callback that records a version after an &#34;update&#34; event.
+def on_update
+  @model_class.before_save(on: :update) { |r|
+    r.paper_trail.reset_timestamp_attrs_for_update_if_needed
+  }
+  @model_class.after_update { |r|
+    r.paper_trail.record_update(nil) if r.paper_trail.save_version?
+  }
+  @model_class.after_update { |r|
+    r.paper_trail.clear_version_instance
+  }
+  return if @model_class.paper_trail_options[:on].include?(:update)
+  @model_class.paper_trail_options[:on] &lt;&lt; :update
+end</code></pre>
 <div><br /></div>
 
   </div><a class="u-url" href="/2017/10/04/0ca1c1057a093a8c066c35ee2f324d5e.html" hidden></a>
